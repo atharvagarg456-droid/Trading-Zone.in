@@ -153,29 +153,41 @@ class SecurityPreferences(context: Context) {
     }
 
     fun getAppleWebAppUrl(): String {
-        return prefs.getString(
-            "apple_web_app_url",
-            "https://atharvagarg456-droid.github.io/TradingCoLTD/"
-        )?.ifBlank { "https://atharvagarg456-droid.github.io/TradingCoLTD/" }
-            ?: "https://atharvagarg456-droid.github.io/TradingCoLTD/"
+        val defaultUrl = "https://atharvagarg456-droid.github.io/Trading-Zone.in/"
+        val raw = prefs.getString("apple_web_app_url", defaultUrl)
+            ?.ifBlank { defaultUrl }
+            ?: defaultUrl
+        return if (raw.contains("TradingCoLTD")) {
+            val migrated = raw.replace("TradingCoLTD", "Trading-Zone.in")
+            prefs.edit().putString("apple_web_app_url", migrated).apply()
+            migrated
+        } else {
+            raw
+        }
     }
 
     fun setAppleWebAppUrl(url: String) {
-        val clean = url.trim().ifBlank { "https://atharvagarg456-droid.github.io/TradingCoLTD/" }
+        val clean = url.trim().ifBlank { "https://atharvagarg456-droid.github.io/Trading-Zone.in/" }
         prefs.edit().putString("apple_web_app_url", clean).apply()
     }
 
     fun getAndroidApkShareUrl(): String {
-        return prefs.getString(
-            "android_apk_share_url",
-            "https://github.com/atharvagarg456-droid/TradingCoLTD/raw/main/Trading-Zone.apk"
-        )?.ifBlank { "https://github.com/atharvagarg456-droid/TradingCoLTD/raw/main/Trading-Zone.apk" }
-            ?: "https://github.com/atharvagarg456-droid/TradingCoLTD/raw/main/Trading-Zone.apk"
+        val defaultUrl = "https://github.com/atharvagarg456-droid/Trading-Zone.in/raw/main/Trading-Zone.apk"
+        val raw = prefs.getString("android_apk_share_url", defaultUrl)
+            ?.ifBlank { defaultUrl }
+            ?: defaultUrl
+        return if (raw.contains("TradingCoLTD")) {
+            val migrated = raw.replace("TradingCoLTD", "Trading-Zone.in")
+            prefs.edit().putString("android_apk_share_url", migrated).apply()
+            migrated
+        } else {
+            raw
+        }
     }
 
     fun setAndroidApkShareUrl(url: String) {
         val clean = url.trim().ifBlank {
-            "https://github.com/atharvagarg456-droid/TradingCoLTD/raw/main/Trading-Zone.apk"
+            "https://github.com/atharvagarg456-droid/Trading-Zone.in/raw/main/Trading-Zone.apk"
         }
         prefs.edit().putString("android_apk_share_url", clean).apply()
     }

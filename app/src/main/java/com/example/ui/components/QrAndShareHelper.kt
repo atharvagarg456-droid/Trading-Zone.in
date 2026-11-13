@@ -71,7 +71,7 @@ object QrCodeGenerator {
     )
 
     fun generateQrBitmap(content: String, sizePx: Int = 640): Bitmap {
-        val payload = content.trim().ifBlank { "https://atharvagarg456-droid.github.io/TradingCoLTD/" }
+        val payload = content.trim().ifBlank { "https://atharvagarg456-droid.github.io/Trading-Zone.in/" }
             .toByteArray(Charsets.UTF_8)
 
         val spec = VERSION_SPECS.firstOrNull { s ->
@@ -682,14 +682,14 @@ fun PermanentQrAndShareCard(
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "Important: Why GitHub Pages Shows 404 If Repo Is Private (🔒):",
+                        text = "How to Open on Any Device & Enable GitHub Pages (Trading-Zone.in):",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFF59E0B)
+                        color = Color(0xFF10B981)
                     )
                     Text(
-                        text = "• Tap 'Open Live Apple / Web App Now' above to launch the embedded Apple Web App immediately with zero setup.\n" +
-                            "• For external iPhones scanning the QR URL ($appleWebAppUrl): On GitHub Free, GitHub Pages only opens when your repository is Public. Go to GitHub → Settings → General → Change repository visibility → Make Public, then Settings → Pages → Branch: gh-pages (or GitHub Actions).",
+                        text = "• Tap 'Open Live Apple / Web App Now' above to launch the embedded Apple Web App immediately inside the app.\n" +
+                            "• For external iPhones scanning the QR URL ($appleWebAppUrl): On your public GitHub repo (Trading-Zone.in), go once to Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: gh-pages (or main /docs) → Save.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
