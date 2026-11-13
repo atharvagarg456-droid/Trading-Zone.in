@@ -113,7 +113,10 @@ fun BroadcastStreamScreen(
     compactFeedMode: Boolean = false,
     largeTextMode: Boolean = false,
     isAdmin: Boolean,
+    emojiReactionsByTarget: Map<String, Map<String, Int>> = emptyMap(),
+    myReactedKeys: Set<String> = emptySet(),
     onMarkMessageOpened: (BroadcastMessage) -> Unit = {},
+    onToggleReaction: (targetId: String, emoji: String) -> Unit = { _, _ -> },
     onRequestFreeTrial: () -> Unit,
     onNavigateToMembership: () -> Unit,
     onNavigateToReviews: () -> Unit = {},
@@ -313,6 +316,55 @@ fun BroadcastStreamScreen(
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
+                                val ticker = pricingConfig.announcementTicker()
+                                if (ticker.isNotBlank()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = "⚡ $ticker",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+                                val pnlBanner = pricingConfig.todayProfitBanner()
+                                if (pnlBanner.enabled) {
+                                    val pColor = if (pnlBanner.isProfit) Color(0xFF00E676) else Color(0xFFFF5252)
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = pColor.copy(alpha = 0.14f),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onNavigateToReviews() }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = if (pnlBanner.isProfit) "TODAY'S OWNER PROFIT • ${pnlBanner.instrumentText}" else "TODAY'S TRADE P&L • ${pnlBanner.instrumentText}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = pColor,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                                Text(
+                                                    text = "${pnlBanner.amountText} (${pnlBanner.roiPercent}) — Tap to react in Commodity 🔥",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
                                 Text(
                                     text = if (unopenedCount > 0) {
                                         "You have $unopenedCount new unopened message(s). Tap the envelope button to open."
@@ -327,7 +379,7 @@ fun BroadcastStreamScreen(
                                     onClick = onNavigateToReviews,
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Text("Open Commodity Section")
+                                    Text("Open Commodity Section & Live P&L")
                                 }
                             }
                         }
@@ -353,6 +405,7 @@ fun BroadcastStreamScreen(
                     items(messages, key = { it.id.ifBlank { it.title + it.createdAt } }) { message ->
                         val isOpened = isAdmin || message.id in openedMessageIds
                         val messageReceipts = receiptsByMessageId[message.id].orEmpty()
+                        val msgTargetId = "msg_${message.id}"
 
                         BroadcastMessageCard(
                             message = message,
@@ -360,6 +413,10 @@ fun BroadcastStreamScreen(
                             seenByCount = messageReceipts.size,
                             largeTextMode = largeTextMode,
                             isAdmin = isAdmin,
+                            targetId = msgTargetId,
+                            reactions = emojiReactionsByTarget[msgTargetId].orEmpty(),
+                            myReactedKeys = myReactedKeys,
+                            onReact = { emoji -> onToggleReaction(msgTargetId, emoji) },
                             onOpenEnvelope = { onMarkMessageOpened(message) },
                             onInspectSeenBy = { inspectSeenByMessage = message },
                             onClickQuotedReply = {
@@ -387,6 +444,10 @@ private fun BroadcastMessageCard(
     seenByCount: Int,
     largeTextMode: Boolean,
     isAdmin: Boolean,
+    targetId: String,
+    reactions: Map<String, Int>,
+    myReactedKeys: Set<String>,
+    onReact: (String) -> Unit,
     onOpenEnvelope: () -> Unit,
     onInspectSeenBy: () -> Unit,
     onClickQuotedReply: () -> Unit,
@@ -497,19 +558,23 @@ private fun BroadcastMessageCard(
                                     )
                                 }
                             }
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.secondaryContainer
-                            ) {
-                                Text(
-                                    text = message.category,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
+                            if (message.hasDisplayCategory()) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.secondaryContainer
+                                ) {
+                                    Text(
+                                        text = message.category,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
                             }
-                            TradeRiskBadge(riskLevel = message.riskLevel)
+                            if (message.hasDisplayRiskLevel()) {
+                                TradeRiskBadge(riskLevel = message.riskLevel)
+                            }
                         }
 
                         if (isAdmin) {
@@ -665,6 +730,14 @@ private fun BroadcastMessageCard(
                             Text(message.linkTitle.ifBlank { "Open Reference Link" })
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TelegramEmojiReactionRow(
+                        targetId = targetId,
+                        reactions = reactions,
+                        myReactedKeys = myReactedKeys,
+                        onReact = onReact
+                    )
                 }
             }
         }

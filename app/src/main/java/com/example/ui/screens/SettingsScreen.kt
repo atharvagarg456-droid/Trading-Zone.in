@@ -456,22 +456,27 @@ fun SettingsScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Appearance & Smooth UI Preferences",
+                    text = "Look-Changer UI Themes & Smooth Animations",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
+                Text(
+                    text = "Instant ultrasound spring transitions across 6 pro terminal skins",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        AppThemePreference.DARK to "Dark OLED",
-                        AppThemePreference.LIGHT to "Daylight",
-                        AppThemePreference.SYSTEM to "Auto"
-                    ).forEach { (mode, label) ->
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AppThemePreference.entries.forEach { mode ->
                         FilterChip(
                             selected = themePreference == mode,
                             onClick = { onChangeTheme(mode) },
-                            label = { Text(label) },
+                            label = { Text("${mode.title} • ${mode.subtitle}") },
                             modifier = Modifier.testTag("theme_chip_${mode.name}")
                         )
                     }

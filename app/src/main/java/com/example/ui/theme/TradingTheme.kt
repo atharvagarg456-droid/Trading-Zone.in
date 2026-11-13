@@ -1,11 +1,16 @@
 package com.example.ui.theme
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -13,9 +18,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AppThemePreference
 
-private val DarkTradingColors = darkColorScheme(
+private val ObsidianTerminalColors = darkColorScheme(
     primary = Color(0xFF10B981),
-    onPrimary = Color(0xFF042F2E),
+    onPrimary = Color(0xFF032218),
     primaryContainer = Color(0xFF064E3B),
     onPrimaryContainer = Color(0xFFA7F3D0),
     secondary = Color(0xFF3B82F6),
@@ -24,17 +29,89 @@ private val DarkTradingColors = darkColorScheme(
     onSecondaryContainer = Color(0xFFDBEAFE),
     tertiary = Color(0xFFF59E0B),
     onTertiary = Color(0xFF451A03),
-    background = Color(0xFF080D1A),
+    background = Color(0xFF060B16),
     onBackground = Color(0xFFF1F5F9),
-    surface = Color(0xFF111A2E),
+    surface = Color(0xFF0E172A),
     onSurface = Color(0xFFF8FAFC),
-    surfaceVariant = Color(0xFF1A2642),
+    surfaceVariant = Color(0xFF172540),
     onSurfaceVariant = Color(0xFF94A3B8),
     error = Color(0xFFEF4444),
     onError = Color(0xFFFFFFFF),
     errorContainer = Color(0xFF450A0A),
     onErrorContainer = Color(0xFFFECACA),
-    outline = Color(0xFF334155)
+    outline = Color(0xFF2D3E5E)
+)
+
+private val CyberEmeraldColors = darkColorScheme(
+    primary = Color(0xFF00F5A0),
+    onPrimary = Color(0xFF022014),
+    primaryContainer = Color(0xFF043B29),
+    onPrimaryContainer = Color(0xFF9FFFE0),
+    secondary = Color(0xFF00D9F5),
+    onSecondary = Color(0xFF01242B),
+    secondaryContainer = Color(0xFF063C47),
+    onSecondaryContainer = Color(0xFFB5F5FF),
+    tertiary = Color(0xFFFACC15),
+    onTertiary = Color(0xFF302402),
+    background = Color(0xFF040D0A),
+    onBackground = Color(0xFFECFDF5),
+    surface = Color(0xFF091914),
+    onSurface = Color(0xFFF0FDF4),
+    surfaceVariant = Color(0xFF112921),
+    onSurfaceVariant = Color(0xFF86EFAC),
+    error = Color(0xFFFF4D6D),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFF4A0E1C),
+    onErrorContainer = Color(0xFFFFCCD5),
+    outline = Color(0xFF1E4638)
+)
+
+private val RoyalGoldColors = darkColorScheme(
+    primary = Color(0xFFF59E0B),
+    onPrimary = Color(0xFF271701),
+    primaryContainer = Color(0xFF4D3004),
+    onPrimaryContainer = Color(0xFFFDE68A),
+    secondary = Color(0xFF10B981),
+    onSecondary = Color(0xFF032218),
+    secondaryContainer = Color(0xFF064E3B),
+    onSecondaryContainer = Color(0xFFA7F3D0),
+    tertiary = Color(0xFFEAB308),
+    onTertiary = Color(0xFF2E2002),
+    background = Color(0xFF0C0A07),
+    onBackground = Color(0xFFFEF3C7),
+    surface = Color(0xFF17130D),
+    onSurface = Color(0xFFFFFBEB),
+    surfaceVariant = Color(0xFF261F14),
+    onSurfaceVariant = Color(0xFFD6C5A3),
+    error = Color(0xFFEF4444),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFF450A0A),
+    onErrorContainer = Color(0xFFFECACA),
+    outline = Color(0xFF473A24)
+)
+
+private val MidnightSapphireColors = darkColorScheme(
+    primary = Color(0xFF38BDF8),
+    onPrimary = Color(0xFF032333),
+    primaryContainer = Color(0xFF0C4A6E),
+    onPrimaryContainer = Color(0xFFBAE6FD),
+    secondary = Color(0xFF818CF8),
+    onSecondary = Color(0xFF13163D),
+    secondaryContainer = Color(0xFF312E81),
+    onSecondaryContainer = Color(0xFFE0E7FF),
+    tertiary = Color(0xFF10B981),
+    onTertiary = Color(0xFF032218),
+    background = Color(0xFF050A18),
+    onBackground = Color(0xFFF0F9FF),
+    surface = Color(0xFF0B1530),
+    onSurface = Color(0xFFF8FAFC),
+    surfaceVariant = Color(0xFF16244A),
+    onSurfaceVariant = Color(0xFF93C5FD),
+    error = Color(0xFFF43F5E),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFF4C0519),
+    onErrorContainer = Color(0xFFFFE4E6),
+    outline = Color(0xFF293E73)
 )
 
 private val LightTradingColors = lightColorScheme(
@@ -119,17 +196,54 @@ private val TradingTypography = Typography(
 )
 
 @Composable
+private fun animateScheme(target: ColorScheme): ColorScheme {
+    val spec = spring<Color>(stiffness = Spring.StiffnessMediumLow)
+    val primary by animateColorAsState(target.primary, spec, label = "primary")
+    val onPrimary by animateColorAsState(target.onPrimary, spec, label = "onPrimary")
+    val primaryContainer by animateColorAsState(target.primaryContainer, spec, label = "primaryContainer")
+    val onPrimaryContainer by animateColorAsState(target.onPrimaryContainer, spec, label = "onPrimaryContainer")
+    val secondary by animateColorAsState(target.secondary, spec, label = "secondary")
+    val secondaryContainer by animateColorAsState(target.secondaryContainer, spec, label = "secondaryContainer")
+    val background by animateColorAsState(target.background, spec, label = "background")
+    val onBackground by animateColorAsState(target.onBackground, spec, label = "onBackground")
+    val surface by animateColorAsState(target.surface, spec, label = "surface")
+    val onSurface by animateColorAsState(target.onSurface, spec, label = "onSurface")
+    val surfaceVariant by animateColorAsState(target.surfaceVariant, spec, label = "surfaceVariant")
+    val onSurfaceVariant by animateColorAsState(target.onSurfaceVariant, spec, label = "onSurfaceVariant")
+    val outline by animateColorAsState(target.outline, spec, label = "outline")
+
+    return target.copy(
+        primary = primary,
+        onPrimary = onPrimary,
+        primaryContainer = primaryContainer,
+        onPrimaryContainer = onPrimaryContainer,
+        secondary = secondary,
+        secondaryContainer = secondaryContainer,
+        background = background,
+        onBackground = onBackground,
+        surface = surface,
+        onSurface = onSurface,
+        surfaceVariant = surfaceVariant,
+        onSurfaceVariant = onSurfaceVariant,
+        outline = outline
+    )
+}
+
+@Composable
 fun TradingTheme(
     themePreference: AppThemePreference = AppThemePreference.DARK,
     content: @Composable () -> Unit
 ) {
-    val useDark = when (themePreference) {
-        AppThemePreference.DARK -> true
-        AppThemePreference.LIGHT -> false
-        AppThemePreference.SYSTEM -> isSystemInDarkTheme()
+    val targetScheme = when (themePreference) {
+        AppThemePreference.DARK -> ObsidianTerminalColors
+        AppThemePreference.CYBER_EMERALD -> CyberEmeraldColors
+        AppThemePreference.ROYAL_GOLD -> RoyalGoldColors
+        AppThemePreference.MIDNIGHT_SAPPHIRE -> MidnightSapphireColors
+        AppThemePreference.LIGHT -> LightTradingColors
+        AppThemePreference.SYSTEM -> if (isSystemInDarkTheme()) ObsidianTerminalColors else LightTradingColors
     }
     MaterialTheme(
-        colorScheme = if (useDark) DarkTradingColors else LightTradingColors,
+        colorScheme = animateScheme(targetScheme),
         typography = TradingTypography,
         content = content
     )

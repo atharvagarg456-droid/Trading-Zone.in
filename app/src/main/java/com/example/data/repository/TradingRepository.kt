@@ -1010,16 +1010,30 @@ class TradingRepository(private val db: FirebaseFirestore) {
     ): Result<String> = runCatching {
         val uid = requireUserId()
         val ref = db.collection("broadcast_messages").document()
-        val normalizedRisk = when (riskLevel.uppercase(Locale.ROOT)) {
-            "LOW", "MEDIUM", "HIGH" -> riskLevel.uppercase(Locale.ROOT)
+        val upperRisk = riskLevel.trim().uppercase(Locale.ROOT)
+        val isRiskNone = upperRisk.isBlank() || upperRisk == "NONE" || upperRisk == "OPTIONAL"
+        val normalizedRisk = when (upperRisk) {
+            "LOW", "MEDIUM", "HIGH" -> upperRisk
             else -> "MEDIUM"
+        }
+        val cleanCategory = category.trim().let {
+            if (it.isBlank() || it.equals("Optional", ignoreCase = true) || it.equals("NONE", ignoreCase = true)) {
+                "NONE"
+            } else {
+                it.take(60)
+            }
+        }
+        val effectiveReplyRisk = if (replyToMessageId.isBlank() && isRiskNone) {
+            "NONE"
+        } else {
+            replyToRiskLevel.trim().take(20)
         }
         try {
             ref.set(
                 mapOf(
                     "title" to title.trim().take(200),
                     "content" to content.trim().take(8000),
-                    "category" to category.trim().ifBlank { "Commodity" }.take(60),
+                    "category" to cleanCategory,
                     "riskLevel" to normalizedRisk,
                     "markedPhotoBase64" to markedPhotoBase64,
                     "linkUrl" to linkUrl.trim().take(1000),
@@ -1027,7 +1041,7 @@ class TradingRepository(private val db: FirebaseFirestore) {
                     "replyToMessageId" to replyToMessageId.trim().take(128),
                     "replyToTitle" to replyToTitle.trim().take(200),
                     "replyToSnippet" to replyToSnippet.trim().take(500),
-                    "replyToRiskLevel" to replyToRiskLevel.trim().take(20),
+                    "replyToRiskLevel" to effectiveReplyRisk,
                     "isPinned" to isPinned,
                     "isEdited" to false,
                     "authorId" to uid,
@@ -1064,16 +1078,30 @@ class TradingRepository(private val db: FirebaseFirestore) {
     ): Result<Unit> = runCatching {
         val uid = requireUserId()
         val ref = db.collection("broadcast_messages").document(messageId)
-        val normalizedRisk = when (riskLevel.uppercase(Locale.ROOT)) {
-            "LOW", "MEDIUM", "HIGH" -> riskLevel.uppercase(Locale.ROOT)
+        val upperRisk = riskLevel.trim().uppercase(Locale.ROOT)
+        val isRiskNone = upperRisk.isBlank() || upperRisk == "NONE" || upperRisk == "OPTIONAL"
+        val normalizedRisk = when (upperRisk) {
+            "LOW", "MEDIUM", "HIGH" -> upperRisk
             else -> "MEDIUM"
+        }
+        val cleanCategory = category.trim().let {
+            if (it.isBlank() || it.equals("Optional", ignoreCase = true) || it.equals("NONE", ignoreCase = true)) {
+                "NONE"
+            } else {
+                it.take(60)
+            }
+        }
+        val effectiveReplyRisk = if (replyToMessageId.isBlank() && isRiskNone) {
+            "NONE"
+        } else {
+            replyToRiskLevel.trim().take(20)
         }
         try {
             ref.update(
                 mapOf(
                     "title" to title.trim().take(200),
                     "content" to content.trim().take(8000),
-                    "category" to category.trim().ifBlank { "Commodity" }.take(60),
+                    "category" to cleanCategory,
                     "riskLevel" to normalizedRisk,
                     "markedPhotoBase64" to markedPhotoBase64,
                     "linkUrl" to linkUrl.trim().take(1000),
@@ -1081,7 +1109,7 @@ class TradingRepository(private val db: FirebaseFirestore) {
                     "replyToMessageId" to replyToMessageId.trim().take(128),
                     "replyToTitle" to replyToTitle.trim().take(200),
                     "replyToSnippet" to replyToSnippet.trim().take(500),
-                    "replyToRiskLevel" to replyToRiskLevel.trim().take(20),
+                    "replyToRiskLevel" to effectiveReplyRisk,
                     "isPinned" to isPinned,
                     "isEdited" to true,
                     "authorId" to uid,
@@ -1108,6 +1136,133 @@ class TradingRepository(private val db: FirebaseFirestore) {
             handleFirestoreError(e, OperationType.DELETE, ref.path)
             throw e
         }
+    }
+
+    suspend fun publishOwnerProfitCard(
+        profile: UserProfile?,
+        amountText: String,
+        instrumentText: String,
+        roiPercent: String,
+        isProfit: Boolean,
+        noteText: String
+    ): Result<String> = runCatching {
+        val uid = requireUserId()
+        val ref = db.collection("community_reviews").document()
+        val cleanAmount = amountText.replace("|", " ").trim().ifBlank { "+₹48,500" }.take(18)
+        val cleanInst = instrumentText.replace("|", " ").trim().ifBlank { "MCX GOLD & SILVER" }.take(22)
+        val cleanRoi = roiPercent.replace("|", " ").trim().ifBlank { "+18.4%" }.take(12)
+        val pFlag = if (isProfit) "1" else "0"
+        val topicTag = "PROFIT_CARD|$cleanAmount|$cleanInst|$cleanRoi|$pFlag".take(80)
+        val authorName = profile?.fullName?.ifBlank { "Atharva Garg (Owner)" } ?: "Atharva Garg (Owner)"
+        try {
+            ref.set(
+                mapOf(
+                    "userId" to uid,
+                    "userName" to authorName.take(120),
+                    "userPhotoBase64" to (profile?.photoBase64 ?: "").take(450000),
+                    "tradeMessageId" to "owner_pnl_feed",
+                    "tradeMessageTitle" to (if (isProfit) "Today's Verified Profit" else "Today's Trade Update") + " • $cleanInst",
+                    "tradeRiskLevel" to "LOW",
+                    "topicTag" to topicTag,
+                    "publicContent" to noteText.trim().ifBlank {
+                        "Verified Owner Trade Book Update: $cleanAmount ($cleanRoi) on $cleanInst"
+                    }.take(2000),
+                    "rating" to 5,
+                    "hasBlurredWords" to false,
+                    "isPinned" to true,
+                    "visibility" to "VERIFIED_MEMBERS",
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            ref.id
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, ref.path)
+            throw e
+        }
+    }
+
+    suspend fun sendTelegramReaction(
+        profile: UserProfile?,
+        targetId: String,
+        emoji: String
+    ): Result<String> = runCatching {
+        val uid = requireUserId()
+        val ref = db.collection("community_reviews").document()
+        try {
+            ref.set(
+                mapOf(
+                    "userId" to uid,
+                    "userName" to (profile?.fullName?.ifBlank { "Verified Trader" } ?: "Verified Trader").take(120),
+                    "userPhotoBase64" to "",
+                    "tradeMessageId" to targetId.trim().take(128),
+                    "tradeMessageTitle" to "Reaction",
+                    "tradeRiskLevel" to "LOW",
+                    "topicTag" to "__REACTION__",
+                    "publicContent" to emoji.trim().ifBlank { "🔥" }.take(16),
+                    "rating" to 5,
+                    "hasBlurredWords" to false,
+                    "isPinned" to false,
+                    "visibility" to "VERIFIED_MEMBERS",
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            ref.id
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, ref.path)
+            throw e
+        }
+    }
+
+    suspend fun bulkExtendActiveSubscribers(
+        users: List<UserProfile>,
+        extraDays: Int
+    ): Result<Int> = runCatching {
+        requireUserId()
+        val daysMillis = extraDays.coerceIn(1, 365).toLong() * 86_400_000L
+        val now = System.currentTimeMillis()
+        var updatedCount = 0
+        for (u in users) {
+            if (u.accountStatus == "APPROVED" &&
+                (u.entitlementStatus == "PAID_ACTIVE" || u.entitlementStatus == "TRIAL_ACTIVE")
+            ) {
+                val baseMillis = maxOf(u.validUntilMillis, now)
+                val nextValid = baseMillis + daysMillis
+                try {
+                    db.collection("users").document(u.userId).update(
+                        mapOf(
+                            "validUntilMillis" to nextValid,
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    ).await()
+                    updatedCount++
+                } catch (_: Exception) {
+                }
+            }
+        }
+        updatedCount
+    }
+
+    suspend fun clearUnpinnedCommodityMessages(
+        reviews: List<CommunityReview>
+    ): Result<Int> = runCatching {
+        requireUserId()
+        var deletedCount = 0
+        for (r in reviews) {
+            if (!r.isPinned && r.id.isNotBlank()) {
+                try {
+                    db.collection("community_reviews").document(r.id).delete().await()
+                    deletedCount++
+                } catch (_: Exception) {
+                }
+            }
+        }
+        deletedCount
     }
 
     suspend fun approveUserAccount(

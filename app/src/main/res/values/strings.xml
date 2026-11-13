@@ -3,4 +3,10 @@
     <string name="app_name">Trading Zone</string>
     <string name="no_network_banner_title">No Network Connected</string>
     <string name="no_network_banner_subtitle">Please turn on mobile data or Wi-Fi for live broadcast &amp; commodity updates.</string>
+    <string name="membership_title">Membership &amp; Plans</string>
+    <string name="membership_trial_used">7-Day Free Trial Already Claimed</string>
+    <string name="membership_claim_trial">Claim 1-Week (7-Day) Free Trial</string>
+    <string name="cd_copy_upi">Copy UPI ID</string>
+    <string name="membership_utr_label">12-Digit UPI UTR / Reference Number</string>
+    <string name="membership_upload_proof">Attach UPI Payment Screenshot</string>
 </resources>

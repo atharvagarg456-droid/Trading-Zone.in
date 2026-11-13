@@ -225,6 +225,8 @@ fun AuthenticatedTradingWorkspace(
     val openedMessageIds by viewModel.openedMessageIds.collectAsStateWithLifecycle()
     val allMessageReadReceipts by viewModel.allMessageReadReceiptsForAdmin.collectAsStateWithLifecycle()
     val communityReviews by viewModel.communityReviews.collectAsStateWithLifecycle()
+    val emojiReactionsByTarget by viewModel.emojiReactionsByTarget.collectAsStateWithLifecycle()
+    val myReactedKeys by viewModel.myReactedKeys.collectAsStateWithLifecycle()
     val onlinePeopleCount by viewModel.onlinePeopleCount.collectAsStateWithLifecycle()
     val pricingConfig by viewModel.pricingConfig.collectAsStateWithLifecycle()
     val adminSettings by viewModel.adminSettings.collectAsStateWithLifecycle()
@@ -299,6 +301,22 @@ fun AuthenticatedTradingWorkspace(
                         }
                     },
                     actions = {
+                        // 1-Tap Look-Changer UI Theme Switcher in TopAppBar
+                        IconButton(
+                            onClick = {
+                                val entries = AppThemePreference.entries
+                                val nextIdx = (entries.indexOf(themePreference) + 1) % entries.size
+                                onChangeTheme(entries[nextIdx])
+                            },
+                            modifier = Modifier.testTag("top_bar_look_changer_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Palette,
+                                contentDescription = "Switch Look-Changer UI Theme (${themePreference.title})",
+                                tint = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+
                         // Quick Permanent QR & Share Website/App button for Apple & Android devices
                         IconButton(
                             onClick = { showQuickQrShareDialog = true },
@@ -530,7 +548,12 @@ fun AuthenticatedTradingWorkspace(
                                     compactFeedMode = compactFeedMode,
                                     largeTextMode = largeTextMode,
                                     isAdmin = isAdmin,
+                                    emojiReactionsByTarget = emojiReactionsByTarget,
+                                    myReactedKeys = myReactedKeys,
                                     onMarkMessageOpened = { msg -> viewModel.markMessageAsOpened(msg) },
+                                    onToggleReaction = { targetId, emoji ->
+                                        viewModel.toggleTelegramReaction(targetId, emoji)
+                                    },
                                     onRequestFreeTrial = { viewModel.requestOneWeekFreeTrial() },
                                     onNavigateToMembership = { selectedTab = MainNavTab.MEMBERSHIP },
                                     onNavigateToReviews = { selectedTab = MainNavTab.COMMODITY },
@@ -551,13 +574,16 @@ fun AuthenticatedTradingWorkspace(
                             }
                             MainNavTab.COMMODITY -> {
                                 CommunityReviewsScreen(
-                                    latestTradeMessage = broadcastMessages.firstOrNull(),
-                                    reviews = communityReviews,
-                                    userProfile = userProfile,
+                                    profile = userProfile,
                                     pricingConfig = pricingConfig,
+                                    broadcastMessages = broadcastMessages,
+                                    reviews = communityReviews,
                                     onlinePeopleCount = onlinePeopleCount,
+                                    currentUserId = viewModel.currentUserId,
                                     isAdmin = isAdmin,
                                     isBusy = isBusy,
+                                    emojiReactionsByTarget = emojiReactionsByTarget,
+                                    myReactedKeys = myReactedKeys,
                                     onSubmitReview = { msgId, msgTitle, risk, topic, opinion, rating ->
                                         viewModel.submitCommunityReview(
                                             tradeMessageId = msgId,
@@ -568,29 +594,33 @@ fun AuthenticatedTradingWorkspace(
                                             rating = rating
                                         )
                                     },
-                                    onDeleteReview = { viewModel.deleteCommunityReview(it) },
                                     onTogglePinReview = { reviewId, pinned ->
                                         viewModel.setCommodityMessagePinned(reviewId, pinned)
                                     },
+                                    onDeleteReview = { viewModel.deleteCommunityReview(it) },
                                     onToggleCommodityChatLock = { locked ->
                                         viewModel.setCommodityChatLocked(locked)
                                     },
-                                    onMuteUserInCommodity = { userId, userName ->
-                                        val target = allUsersForAdmin.find { it.userId == userId }
-                                            ?: com.example.data.model.UserProfile(userId = userId, fullName = userName)
-                                        viewModel.setUserCommodityMuted(target, true)
+                                    onToggleReaction = { targetId, emoji ->
+                                        viewModel.toggleTelegramReaction(targetId, emoji)
                                     },
-                                    onNavigateToMembership = { selectedTab = MainNavTab.MEMBERSHIP }
+                                    onUpdateTodayProfitBannerAndCard = { banner, alsoPostInFeed ->
+                                        viewModel.updateTodayProfitBannerAndOptionalCard(banner, alsoPostInFeed)
+                                    },
+                                    onClearUnpinnedCommodityMessages = {
+                                        viewModel.clearUnpinnedCommodityMessages()
+                                    }
                                 )
                             }
                             MainNavTab.MEMBERSHIP -> {
                                 MembershipScreen(
-                                    userProfile = userProfile,
+                                    profile = userProfile,
                                     deviceRecord = deviceRecord,
                                     pricingConfig = pricingConfig,
                                     myRequests = myAccessRequests,
                                     isBusy = isBusy,
-                                    onRequestFreeTrial = { viewModel.requestOneWeekFreeTrial() },
+                                    isAdmin = isAdmin,
+                                    onRequestTrial = { viewModel.requestOneWeekFreeTrial() },
                                     onSubmitUpiPayment = { planName, amount, days, utr, screenshot ->
                                         viewModel.submitUpiPayment(
                                             planName = planName,
@@ -599,6 +629,28 @@ fun AuthenticatedTradingWorkspace(
                                             utrReference = utr,
                                             paymentScreenshotBase64 = screenshot
                                         )
+                                    },
+                                    onTogglePlanEnabled = { plan, enabled ->
+                                        viewModel.togglePlanEnabled(plan, enabled)
+                                    },
+                                    onUpsertPlanInStudio = { slotIndex, planId, name, priceInr, validityDays, badge, qrCodeBase64, qrOnlyMode, enabled ->
+                                        viewModel.upsertPlanInStudio(
+                                            slotIndex = slotIndex,
+                                            planId = planId,
+                                            name = name,
+                                            priceInr = priceInr,
+                                            validityDays = validityDays,
+                                            badge = badge,
+                                            qrCodeBase64 = qrCodeBase64,
+                                            qrOnlyMode = qrOnlyMode,
+                                            enabled = enabled
+                                        )
+                                    },
+                                    onDeletePlanInStudio = { plan ->
+                                        viewModel.deletePlanInStudio(plan)
+                                    },
+                                    onBulkExtendSubscribers = { extraDays ->
+                                        viewModel.bulkExtendActiveSubscribers(extraDays)
                                     }
                                 )
                             }
@@ -688,7 +740,16 @@ fun AuthenticatedTradingWorkspace(
                                         )
                                     },
                                     onAddCoAdminEmail = { viewModel.addCoAdminEmail(it) },
-                                    onRemoveCoAdminEmail = { viewModel.removeCoAdminEmail(it) }
+                                    onRemoveCoAdminEmail = { viewModel.removeCoAdminEmail(it) },
+                                    onUpdateTodayProfitBannerAndCard = { banner, alsoPostInFeed ->
+                                        viewModel.updateTodayProfitBannerAndOptionalCard(banner, alsoPostInFeed)
+                                    },
+                                    onBulkExtendSubscribers = { extraDays ->
+                                        viewModel.bulkExtendActiveSubscribers(extraDays)
+                                    },
+                                    onClearUnpinnedCommodityMessages = {
+                                        viewModel.clearUnpinnedCommodityMessages()
+                                    }
                                 )
                             }
                         }

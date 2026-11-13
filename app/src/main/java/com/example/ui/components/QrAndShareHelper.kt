@@ -447,6 +447,50 @@ object AppShareHelper {
             Toast.makeText(context, "Could not open browser: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
+
+    fun shareStandaloneAppleWebAppFile(context: Context, webUrl: String) {
+        try {
+            val dir = java.io.File(context.cacheDir, "shared_webapp")
+            if (!dir.exists()) dir.mkdirs()
+            val outFile = java.io.File(dir, "Trading-Zone-Apple-WebApp.html")
+            context.assets.open("apple_webapp.html").use { input ->
+                outFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                outFile
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/html"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(
+                    Intent.EXTRA_SUBJECT,
+                    "Trading Zone — Apple iPhone / iPad Live App"
+                )
+                putExtra(
+                    Intent.EXTRA_TEXT,
+                    "🍎 Trading Zone for Apple iPhone & iPad!\n\n" +
+                        "Option 1 (Direct App File): Tap the attached 'Trading-Zone-Apple-WebApp.html' file and open in Safari — works immediately with zero setup!\n" +
+                        "Option 2 (Web Link): $webUrl"
+                )
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(
+                Intent.createChooser(shareIntent, "Send Apple iPhone App File via")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (e: Exception) {
+            Toast.makeText(
+                context,
+                "Sharing link fallback: ${e.localizedMessage}",
+                Toast.LENGTH_SHORT
+            ).show()
+            shareAppleWebAppLink(context, webUrl, "")
+        }
+    }
 }
 
 @Composable
@@ -593,7 +637,7 @@ fun PermanentQrAndShareCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Primary Action: Open Live Apple / Web App Immediately (Zero 404 even if GitHub Repo is Private)
+            // Primary Action: Open Live Apple / Web App Immediately (Zero 404)
             Button(
                 onClick = { showInAppWebPortal = true },
                 colors = ButtonDefaults.buttonColors(
@@ -608,6 +652,30 @@ fun PermanentQrAndShareCard(
                 Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Open Live Apple / Web App Now", fontWeight = FontWeight.ExtraBold)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Send Standalone Apple Web App HTML File Directly via WhatsApp/Telegram/AirDrop
+            Button(
+                onClick = {
+                    AppShareHelper.shareStandaloneAppleWebAppFile(
+                        context = context,
+                        webUrl = appleWebAppUrl
+                    )
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFF59E0B),
+                    contentColor = Color.Black
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("share_standalone_apple_file_button")
+            ) {
+                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Send Direct Apple App File (Opens 100% on iPhone)", fontWeight = FontWeight.ExtraBold)
             }
 
             Spacer(modifier = Modifier.height(8.dp))

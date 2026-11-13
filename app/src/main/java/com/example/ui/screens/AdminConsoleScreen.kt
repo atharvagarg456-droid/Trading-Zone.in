@@ -5,6 +5,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,8 +32,10 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.AccessRequest
 import com.example.data.model.AdminSettings
 import com.example.data.model.BroadcastMessage
+import com.example.data.model.CustomPlanItem
 import com.example.data.model.ModerationAlert
 import com.example.data.model.PricingConfig
+import com.example.data.model.TodayProfitBanner
 import com.example.data.model.UserProfile
 import com.example.ui.components.ImageCodecHelper
 import com.example.ui.components.PermanentQrAndShareCard
@@ -122,7 +125,10 @@ fun AdminConsoleScreen(
         benefits: List<String>
     ) -> Unit,
     onAddCoAdminEmail: (String) -> Unit,
-    onRemoveCoAdminEmail: (String) -> Unit
+    onRemoveCoAdminEmail: (String) -> Unit,
+    onUpdateTodayProfitBannerAndCard: (TodayProfitBanner, Boolean) -> Unit = { _, _ -> },
+    onBulkExtendSubscribers: (Int) -> Unit = {},
+    onClearUnpinnedCommodityMessages: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -237,7 +243,10 @@ fun AdminConsoleScreen(
                 onUpdateShareUrls = onUpdateShareUrls,
                 onSavePricingAndQrConfig = onSavePricingAndQrConfig,
                 onAddCoAdminEmail = onAddCoAdminEmail,
-                onRemoveCoAdminEmail = onRemoveCoAdminEmail
+                onRemoveCoAdminEmail = onRemoveCoAdminEmail,
+                onUpdateTodayProfitBannerAndCard = onUpdateTodayProfitBannerAndCard,
+                onBulkExtendSubscribers = onBulkExtendSubscribers,
+                onClearUnpinnedCommodityMessages = onClearUnpinnedCommodityMessages
             )
         }
     }
@@ -282,8 +291,24 @@ private fun AdminPublishMessageTab(
     val context = LocalContext.current
     var title by remember(editingMessageInit) { mutableStateOf(editingMessageInit?.title ?: "") }
     var content by remember(editingMessageInit) { mutableStateOf(editingMessageInit?.content ?: "") }
-    var category by remember(editingMessageInit) { mutableStateOf(editingMessageInit?.category ?: "INTRADAY") }
-    var riskLevel by remember(editingMessageInit) { mutableStateOf(editingMessageInit?.riskLevel ?: "MEDIUM") }
+    var category by remember(editingMessageInit) {
+        mutableStateOf(
+            if (editingMessageInit != null && editingMessageInit.hasDisplayCategory()) {
+                editingMessageInit.category
+            } else {
+                "NONE"
+            }
+        )
+    }
+    var riskLevel by remember(editingMessageInit) {
+        mutableStateOf(
+            if (editingMessageInit != null && editingMessageInit.hasDisplayRiskLevel()) {
+                editingMessageInit.riskLevel
+            } else {
+                "NONE"
+            }
+        )
+    }
     var markedPhotoBase64 by remember(editingMessageInit) {
         mutableStateOf(editingMessageInit?.markedPhotoBase64 ?: "")
     }
@@ -401,24 +426,54 @@ private fun AdminPublishMessageTab(
                 .testTag("admin_message_body_input")
         )
 
-        Text("Category", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("INTRADAY", "SWING", "OPTIONS", "MCX").forEach { cat ->
+        Text(
+            "Category (Optional — select None to hide badge)",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                "NONE" to "None (Optional)",
+                "INTRADAY" to "INTRADAY",
+                "SWING" to "SWING",
+                "OPTIONS" to "OPTIONS",
+                "MCX" to "MCX",
+                "COMMODITY" to "COMMODITY"
+            ).forEach { (catKey, catLabel) ->
                 FilterChip(
-                    selected = category == cat,
-                    onClick = { category = cat },
-                    label = { Text(cat) }
+                    selected = category == catKey,
+                    onClick = { category = catKey },
+                    label = { Text(catLabel) }
                 )
             }
         }
 
-        Text("Broadcast Risk Level", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("LOW", "MEDIUM", "HIGH").forEach { risk ->
+        Text(
+            "Broadcast Risk Level (Optional — select None to hide badge)",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                "NONE" to "None (Optional)",
+                "LOW" to "LOW",
+                "MEDIUM" to "MEDIUM",
+                "HIGH" to "HIGH"
+            ).forEach { (riskKey, riskLabel) ->
                 FilterChip(
-                    selected = riskLevel == risk,
-                    onClick = { riskLevel = risk },
-                    label = { Text(risk) }
+                    selected = riskLevel == riskKey,
+                    onClick = { riskLevel = riskKey },
+                    label = { Text(riskLabel) }
                 )
             }
         }
@@ -1128,28 +1183,43 @@ private fun AdminPlansAndConfigTab(
         benefits: List<String>
     ) -> Unit,
     onAddCoAdminEmail: (String) -> Unit,
-    onRemoveCoAdminEmail: (String) -> Unit
+    onRemoveCoAdminEmail: (String) -> Unit,
+    onUpdateTodayProfitBannerAndCard: (TodayProfitBanner, Boolean) -> Unit = { _, _ -> },
+    onBulkExtendSubscribers: (Int) -> Unit = {},
+    onClearUnpinnedCommodityMessages: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
+    var plan1Enabled by remember(pricingConfig) { mutableStateOf(pricingConfig.isPlan1Enabled()) }
     var plan1Name by remember(pricingConfig) { mutableStateOf(pricingConfig.planName) }
     var plan1Price by remember(pricingConfig) { mutableStateOf(pricingConfig.priceInr.toInt().toString()) }
     var plan1Days by remember(pricingConfig) { mutableStateOf(pricingConfig.validityDays.toString()) }
     var plan1Qr by remember(pricingConfig) { mutableStateOf(pricingConfig.qrCodeBase64) }
+    var plan1QrOnly by remember(pricingConfig) { mutableStateOf(pricingConfig.qrOnlyMode) }
 
+    var plan2Enabled by remember(pricingConfig) { mutableStateOf(pricingConfig.plan2Enabled) }
     var plan2Name by remember(pricingConfig) { mutableStateOf(pricingConfig.plan2Name) }
     var plan2Price by remember(pricingConfig) { mutableStateOf(pricingConfig.plan2PriceInr.toInt().toString()) }
     var plan2Days by remember(pricingConfig) { mutableStateOf(pricingConfig.plan2ValidityDays.toString()) }
     var plan2Qr by remember(pricingConfig) { mutableStateOf(pricingConfig.plan2QrCodeBase64) }
+    var plan2QrOnly by remember(pricingConfig) { mutableStateOf(pricingConfig.plan2QrOnlyMode) }
 
+    var plan3Enabled by remember(pricingConfig) { mutableStateOf(pricingConfig.plan3Enabled) }
     var plan3Name by remember(pricingConfig) { mutableStateOf(pricingConfig.plan3Name) }
     var plan3Price by remember(pricingConfig) { mutableStateOf(pricingConfig.plan3PriceInr.toInt().toString()) }
     var plan3Days by remember(pricingConfig) { mutableStateOf(pricingConfig.plan3ValidityDays.toString()) }
     var plan3Qr by remember(pricingConfig) { mutableStateOf(pricingConfig.plan3QrCodeBase64) }
+    var plan3QrOnly by remember(pricingConfig) { mutableStateOf(pricingConfig.plan3QrOnlyMode) }
+
+    var customPlans by remember(pricingConfig) { mutableStateOf(pricingConfig.customPlans()) }
+    var announcementTicker by remember(pricingConfig) { mutableStateOf(pricingConfig.announcementTicker()) }
+    var showAddCustomPlanModal by remember { mutableStateOf(false) }
+    var showPnlEditorModal by remember { mutableStateOf(false) }
 
     var upiId by remember(pricingConfig) { mutableStateOf(pricingConfig.upiId) }
     var upiMobile by remember(pricingConfig) { mutableStateOf(pricingConfig.upiMobileNumber) }
     var dailyLimit by remember(pricingConfig) { mutableStateOf(pricingConfig.dailyReviewLimitPerUser.toString()) }
+    var trialDays by remember(pricingConfig) { mutableStateOf(pricingConfig.trialDays.toString()) }
     var isChatLocked by remember(pricingConfig) { mutableStateOf(pricingConfig.commodityChatLocked) }
     var newCoAdminEmail by remember { mutableStateOf("") }
     var activeQrSlot by remember { mutableIntStateOf(1) }
@@ -1174,6 +1244,46 @@ private fun AdminPlansAndConfigTab(
         }
     }
 
+    fun triggerSaveAll(
+        updatedCustomPlans: List<CustomPlanItem> = customPlans,
+        updatedP1Enabled: Boolean = plan1Enabled,
+        updatedP2Enabled: Boolean = plan2Enabled,
+        updatedP3Enabled: Boolean = plan3Enabled
+    ) {
+        val encodedBenefits = PricingConfig.buildBenefitsWithMeta(
+            displayBenefits = pricingConfig.displayBenefits(),
+            plan1Enabled = updatedP1Enabled,
+            customPlans = updatedCustomPlans,
+            todayProfit = pricingConfig.todayProfitBanner(),
+            announcementTicker = announcementTicker
+        )
+        onSavePricingAndQrConfig(
+            plan1Name,
+            plan1Price.toDoubleOrNull() ?: 2499.0,
+            plan1Days.toLongOrNull() ?: 30L,
+            upiId,
+            upiMobile,
+            plan1Qr,
+            plan1QrOnly,
+            updatedP2Enabled,
+            plan2Name,
+            plan2Price.toDoubleOrNull() ?: 5999.0,
+            plan2Days.toLongOrNull() ?: 90L,
+            plan2Qr,
+            plan2QrOnly,
+            updatedP3Enabled,
+            plan3Name,
+            plan3Price.toDoubleOrNull() ?: 9999.0,
+            plan3Days.toLongOrNull() ?: 180L,
+            plan3Qr,
+            plan3QrOnly,
+            dailyLimit.toLongOrNull() ?: 10L,
+            isChatLocked,
+            trialDays.toLongOrNull() ?: 7L,
+            encodedBenefits
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1189,8 +1299,93 @@ private fun AdminPlansAndConfigTab(
             onUpdateUrls = onUpdateShareUrls
         )
 
+        // SUPER ADMIN COMMAND SUITE (Today's P&L, Announcement Ticker, Bulk Subscriber Extensions)
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.5.dp, EmeraldColor.copy(alpha = 0.6f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = EmeraldColor)
+                    Text(
+                        text = "Super Admin Command Center",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                val currentPnl = pricingConfig.todayProfitBanner()
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Today's Profit / Loss: ${currentPnl.amountText} (${currentPnl.instrumentText})",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = if (currentPnl.isProfit) EmeraldColor else CrimsonColor
+                            )
+                            Text(
+                                text = if (currentPnl.enabled) "Visible on Commodity & Broadcasts with Telegram Reactions" else "Currently Hidden",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Button(onClick = { showPnlEditorModal = true }) {
+                            Text("Edit / Post P&L")
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = announcementTicker,
+                    onValueChange = { announcementTicker = it },
+                    label = { Text("Live Announcement Ticker (Shown on Broadcast Stream)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { onBulkExtendSubscribers(7) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("+7d All Active")
+                    }
+                    OutlinedButton(
+                        onClick = { onBulkExtendSubscribers(30) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("+30d All Active")
+                    }
+                    OutlinedButton(
+                        onClick = onClearUnpinnedCommodityMessages,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Clear Chat")
+                    }
+                }
+            }
+        }
+
         Text(
-            text = "Commodity Controls & Multi-Plan QR Settings",
+            text = "Commodity Controls & Multi-Plan Studio (ON / OFF / Add / Delete)",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
@@ -1204,13 +1399,22 @@ private fun AdminPlansAndConfigTab(
             Switch(checked = isChatLocked, onCheckedChange = { isChatLocked = it })
         }
 
-        OutlinedTextField(
-            value = dailyLimit,
-            onValueChange = { dailyLimit = it.filter(Char::isDigit) },
-            label = { Text("Daily Commodity Message Limit per Member") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = dailyLimit,
+                onValueChange = { dailyLimit = it.filter(Char::isDigit) },
+                label = { Text("Daily Msg Limit / User") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextField(
+                value = trialDays,
+                onValueChange = { trialDays = it.filter(Char::isDigit) },
+                label = { Text("Free Trial Days") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+        }
 
         OutlinedTextField(
             value = upiId,
@@ -1220,14 +1424,46 @@ private fun AdminPlansAndConfigTab(
             modifier = Modifier.fillMaxWidth()
         )
 
+        OutlinedTextField(
+            value = upiMobile,
+            onValueChange = { upiMobile = it },
+            label = { Text("Official UPI Mobile Number") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
         // Plan 1
         Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Plan #1 (Monthly)", fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Plan #1 (Primary Tier)", fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(if (plan1Enabled) "ON" else "OFF", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Switch(
+                            checked = plan1Enabled,
+                            onCheckedChange = {
+                                plan1Enabled = it
+                                triggerSaveAll(updatedP1Enabled = it)
+                            }
+                        )
+                    }
+                }
                 OutlinedTextField(value = plan1Name, onValueChange = { plan1Name = it }, label = { Text("Plan Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = plan1Price, onValueChange = { plan1Price = it.filter(Char::isDigit) }, label = { Text("Price (INR)") }, singleLine = true, modifier = Modifier.weight(1f))
                     OutlinedTextField(value = plan1Days, onValueChange = { plan1Days = it.filter(Char::isDigit) }, label = { Text("Validity (Days)") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("QR-Only Mode (Hide UPI ID)", style = MaterialTheme.typography.bodySmall)
+                    Switch(checked = plan1QrOnly, onCheckedChange = { plan1QrOnly = it })
                 }
                 OutlinedButton(
                     onClick = {
@@ -1244,11 +1480,35 @@ private fun AdminPlansAndConfigTab(
         // Plan 2
         Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Plan #2 (Quarterly)", fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Plan #2 (Quarterly Tier)", fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(if (plan2Enabled) "ON" else "OFF", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Switch(
+                            checked = plan2Enabled,
+                            onCheckedChange = {
+                                plan2Enabled = it
+                                triggerSaveAll(updatedP2Enabled = it)
+                            }
+                        )
+                    }
+                }
                 OutlinedTextField(value = plan2Name, onValueChange = { plan2Name = it }, label = { Text("Plan Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = plan2Price, onValueChange = { plan2Price = it.filter(Char::isDigit) }, label = { Text("Price (INR)") }, singleLine = true, modifier = Modifier.weight(1f))
                     OutlinedTextField(value = plan2Days, onValueChange = { plan2Days = it.filter(Char::isDigit) }, label = { Text("Validity (Days)") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("QR-Only Mode (Hide UPI ID)", style = MaterialTheme.typography.bodySmall)
+                    Switch(checked = plan2QrOnly, onCheckedChange = { plan2QrOnly = it })
                 }
                 OutlinedButton(
                     onClick = {
@@ -1265,11 +1525,35 @@ private fun AdminPlansAndConfigTab(
         // Plan 3
         Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Plan #3 (Half-Yearly)", fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Plan #3 (Institutional Tier)", fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(if (plan3Enabled) "ON" else "OFF", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Switch(
+                            checked = plan3Enabled,
+                            onCheckedChange = {
+                                plan3Enabled = it
+                                triggerSaveAll(updatedP3Enabled = it)
+                            }
+                        )
+                    }
+                }
                 OutlinedTextField(value = plan3Name, onValueChange = { plan3Name = it }, label = { Text("Plan Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = plan3Price, onValueChange = { plan3Price = it.filter(Char::isDigit) }, label = { Text("Price (INR)") }, singleLine = true, modifier = Modifier.weight(1f))
                     OutlinedTextField(value = plan3Days, onValueChange = { plan3Days = it.filter(Char::isDigit) }, label = { Text("Validity (Days)") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("QR-Only Mode (Hide UPI ID)", style = MaterialTheme.typography.bodySmall)
+                    Switch(checked = plan3QrOnly, onCheckedChange = { plan3QrOnly = it })
                 }
                 OutlinedButton(
                     onClick = {
@@ -1279,6 +1563,91 @@ private fun AdminPlansAndConfigTab(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(if (plan3Qr.isBlank()) "Upload Plan #3 QR Image" else "Replace Plan #3 QR Image")
+                }
+            }
+        }
+
+        // Custom Plans Studio (Add / Toggle ON-OFF / Delete Custom Plans)
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Custom Plans (${customPlans.size}/5)", fontWeight = FontWeight.ExtraBold)
+                        Text(
+                            "Create special event plans, weekly passes, or custom tiers and toggle them ON/OFF anytime",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Button(
+                        onClick = { showAddCustomPlanModal = true },
+                        enabled = customPlans.size < 5
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add Plan")
+                    }
+                }
+
+                if (customPlans.isEmpty()) {
+                    Text(
+                        "No extra custom plans added yet. Tap '+ Add Plan' to create one.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    customPlans.forEach { cp ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("${cp.name} (${cp.badge})", fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "₹${cp.priceInr.toInt()} • ${cp.validityDays} Days • ${if (cp.enabled) "ON (Live)" else "OFF (Hidden)"}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Switch(
+                                    checked = cp.enabled,
+                                    onCheckedChange = { enabled ->
+                                        val next = customPlans.map {
+                                            if (it.id == cp.id) it.copy(enabled = enabled) else it
+                                        }
+                                        customPlans = next
+                                        triggerSaveAll(updatedCustomPlans = next)
+                                    }
+                                )
+                                IconButton(
+                                    onClick = {
+                                        val next = customPlans.filterNot { it.id == cp.id }
+                                        customPlans = next
+                                        triggerSaveAll(updatedCustomPlans = next)
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete Custom Plan",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1322,33 +1691,7 @@ private fun AdminPlansAndConfigTab(
         }
 
         Button(
-            onClick = {
-                onSavePricingAndQrConfig(
-                    plan1Name,
-                    plan1Price.toDoubleOrNull() ?: 2499.0,
-                    plan1Days.toLongOrNull() ?: 30L,
-                    upiId,
-                    upiMobile,
-                    plan1Qr,
-                    pricingConfig.qrOnlyMode,
-                    true,
-                    plan2Name,
-                    plan2Price.toDoubleOrNull() ?: 5999.0,
-                    plan2Days.toLongOrNull() ?: 90L,
-                    plan2Qr,
-                    pricingConfig.plan2QrOnlyMode,
-                    true,
-                    plan3Name,
-                    plan3Price.toDoubleOrNull() ?: 9999.0,
-                    plan3Days.toLongOrNull() ?: 180L,
-                    plan3Qr,
-                    pricingConfig.plan3QrOnlyMode,
-                    dailyLimit.toLongOrNull() ?: 10L,
-                    isChatLocked,
-                    pricingConfig.trialDays,
-                    pricingConfig.benefits
-                )
-            },
+            onClick = { triggerSaveAll() },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp)
@@ -1358,5 +1701,82 @@ private fun AdminPlansAndConfigTab(
             Spacer(modifier = Modifier.width(8.dp))
             Text("Save All Plans & Platform Settings", fontWeight = FontWeight.Bold)
         }
+    }
+
+    if (showAddCustomPlanModal) {
+        var cpName by remember { mutableStateOf("") }
+        var cpPrice by remember { mutableStateOf("1499") }
+        var cpDays by remember { mutableStateOf("45") }
+        var cpBadge by remember { mutableStateOf("Special Tier") }
+
+        AlertDialog(
+            onDismissRequest = { showAddCustomPlanModal = false },
+            title = { Text("Create Custom Plan", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = cpName,
+                        onValueChange = { cpName = it },
+                        label = { Text("Plan Name (e.g. Weekly Gold Sniper)") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = cpPrice,
+                        onValueChange = { cpPrice = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("Price (₹ INR)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = cpDays,
+                        onValueChange = { cpDays = it.filter(Char::isDigit) },
+                        label = { Text("Validity (Days)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = cpBadge,
+                        onValueChange = { cpBadge = it },
+                        label = { Text("Badge Text (e.g. VIP / Limited)") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val next = customPlans + CustomPlanItem(
+                            id = "cp_${System.currentTimeMillis() % 100000}",
+                            name = cpName.trim().ifBlank { "Custom VIP Plan" },
+                            priceInr = cpPrice.toDoubleOrNull() ?: 1499.0,
+                            validityDays = cpDays.toLongOrNull() ?: 45L,
+                            enabled = true,
+                            badge = cpBadge.trim().ifBlank { "Custom Tier" }
+                        )
+                        customPlans = next
+                        triggerSaveAll(updatedCustomPlans = next)
+                        showAddCustomPlanModal = false
+                    }
+                ) {
+                    Text("Add & Activate Plan")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddCustomPlanModal = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showPnlEditorModal) {
+        OwnerProfitEditorDialog(
+            initialBanner = pricingConfig.todayProfitBanner(),
+            onDismiss = { showPnlEditorModal = false },
+            onSave = { updatedBanner, alsoPostInFeed ->
+                onUpdateTodayProfitBannerAndCard(updatedBanner, alsoPostInFeed)
+                showPnlEditorModal = false
+            }
+        )
     }
 }

@@ -7,11 +7,14 @@ import com.example.data.model.AccessRequest
 import com.example.data.model.AdminSettings
 import com.example.data.model.BroadcastMessage
 import com.example.data.model.CommunityReview
+import com.example.data.model.CustomPlanItem
 import com.example.data.model.DeviceRecord
 import com.example.data.model.MessageReadReceipt
 import com.example.data.model.ModerationAlert
 import com.example.data.model.PRIMARY_ADMIN_EMAIL
 import com.example.data.model.PricingConfig
+import com.example.data.model.SubscriptionPlanOption
+import com.example.data.model.TodayProfitBanner
 import com.example.data.model.UserProfile
 import com.example.data.repository.TradingRepository
 import kotlinx.coroutines.CancellationException
@@ -243,13 +246,76 @@ class TradingViewModel(
             initialValue = emptyList()
         )
 
-    val communityReviews: StateFlow<List<CommunityReview>> = repository.observeCommunityReviews()
+    private val rawCommunityReviews: StateFlow<List<CommunityReview>> = repository.observeCommunityReviews()
         .catch { emit(emptyList()) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000L),
             initialValue = emptyList()
         )
+
+    val communityReviews: StateFlow<List<CommunityReview>> = rawCommunityReviews
+        .combine(MutableStateFlow(Unit)) { list, _ ->
+            list.filter { !it.isEmojiReactionDoc() }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000L),
+            initialValue = emptyList()
+        )
+
+    private val _optimisticReactionAdds = MutableStateFlow<Set<String>>(emptySet())
+
+    val emojiReactionsByTarget: StateFlow<Map<String, Map<String, Int>>> = combine(
+        rawCommunityReviews,
+        _optimisticReactionAdds
+    ) { list, optimisticSet ->
+        val result = mutableMapOf<String, MutableMap<String, Int>>()
+        val seenUserTargetEmoji = mutableSetOf<String>()
+        list.filter { it.isEmojiReactionDoc() }.forEach { doc ->
+            val targetId = doc.tradeMessageId.trim()
+            val emoji = doc.publicContent.trim()
+            if (targetId.isNotBlank() && emoji.isNotBlank()) {
+                val dedupKey = "${doc.userId}|$targetId|$emoji"
+                if (seenUserTargetEmoji.add(dedupKey)) {
+                    val emojiMap = result.getOrPut(targetId) { mutableMapOf() }
+                    emojiMap[emoji] = (emojiMap[emoji] ?: 0) + 1
+                }
+            }
+        }
+        optimisticSet.forEach { key ->
+            val parts = key.split("|")
+            if (parts.size == 2) {
+                val targetId = parts[0]
+                val emoji = parts[1]
+                val dedupKey = "$currentUserId|$targetId|$emoji"
+                if (seenUserTargetEmoji.add(dedupKey)) {
+                    val emojiMap = result.getOrPut(targetId) { mutableMapOf() }
+                    emojiMap[emoji] = (emojiMap[emoji] ?: 0) + 1
+                }
+            }
+        }
+        result
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = emptyMap()
+    )
+
+    val myReactedKeys: StateFlow<Set<String>> = combine(
+        rawCommunityReviews,
+        _optimisticReactionAdds
+    ) { list, optimisticSet ->
+        val fromRemote = list
+            .filter { it.isEmojiReactionDoc() && it.userId == currentUserId }
+            .map { "${it.tradeMessageId.trim()}|${it.publicContent.trim()}" }
+            .toSet()
+        fromRemote + optimisticSet
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = emptySet()
+    )
 
     val onlinePeopleCount: StateFlow<Int> = repository.observeOnlinePeopleCount()
         .catch { emit(1) }
@@ -949,11 +1015,28 @@ class TradingViewModel(
         dailyReviewLimitPerUser: Long,
         commodityChatLocked: Boolean,
         trialDays: Long,
-        benefits: List<String>
+        benefits: List<String>,
+        plan1Enabled: Boolean = pricingConfig.value.isPlan1Enabled(),
+        customPlans: List<CustomPlanItem> = pricingConfig.value.customPlans(),
+        todayProfitBanner: TodayProfitBanner = pricingConfig.value.todayProfitBanner(),
+        announcementTicker: String = pricingConfig.value.announcementTicker()
     ) {
         viewModelScope.launch {
             _isBusy.value = true
             try {
+                val cleanDisplayBenefits = benefits.filterNot {
+                    it.startsWith("__META1__|") ||
+                        it.startsWith("__CP__|") ||
+                        it.startsWith("__PNL__|") ||
+                        it.startsWith("__TICKER__|")
+                }
+                val encodedBenefits = PricingConfig.buildBenefitsWithMeta(
+                    displayBenefits = cleanDisplayBenefits,
+                    plan1Enabled = plan1Enabled,
+                    customPlans = customPlans,
+                    todayProfit = todayProfitBanner,
+                    announcementTicker = announcementTicker
+                )
                 repository.savePricingConfig(
                     planName = planName,
                     priceInr = priceInr,
@@ -977,12 +1060,370 @@ class TradingViewModel(
                     dailyReviewLimitPerUser = dailyReviewLimitPerUser,
                     commodityChatLocked = commodityChatLocked,
                     trialDays = trialDays,
-                    benefits = benefits
+                    benefits = encodedBenefits
                 ).onSuccess {
-                    _statusMessage.value = "Pricing & QR plans saved!"
+                    _statusMessage.value = "Plans, Custom Controls & Pricing saved!"
                 }.onFailure { err ->
                     _statusMessage.value = err.localizedMessage ?: "Failed to save pricing config."
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } finally {
+                _isBusy.value = false
+            }
+        }
+    }
+
+    fun togglePlanEnabled(planOption: SubscriptionPlanOption, enabled: Boolean) {
+        val cfg = pricingConfig.value
+        var p1Enabled = cfg.isPlan1Enabled()
+        var p2Enabled = cfg.plan2Enabled
+        var p3Enabled = cfg.plan3Enabled
+        var customList = cfg.customPlans()
+        when (planOption.slotIndex) {
+            1 -> p1Enabled = enabled
+            2 -> p2Enabled = enabled
+            3 -> p3Enabled = enabled
+            else -> {
+                customList = customList.map { cp ->
+                    if (cp.id == planOption.id) cp.copy(enabled = enabled) else cp
+                }
+            }
+        }
+        savePricingAndQrConfig(
+            planName = cfg.planName,
+            priceInr = cfg.priceInr,
+            validityDays = cfg.validityDays,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = cfg.qrCodeBase64,
+            qrOnlyMode = cfg.qrOnlyMode,
+            plan2Enabled = p2Enabled,
+            plan2Name = cfg.plan2Name,
+            plan2PriceInr = cfg.plan2PriceInr,
+            plan2ValidityDays = cfg.plan2ValidityDays,
+            plan2QrCodeBase64 = cfg.plan2QrCodeBase64,
+            plan2QrOnlyMode = cfg.plan2QrOnlyMode,
+            plan3Enabled = p3Enabled,
+            plan3Name = cfg.plan3Name,
+            plan3PriceInr = cfg.plan3PriceInr,
+            plan3ValidityDays = cfg.plan3ValidityDays,
+            plan3QrCodeBase64 = cfg.plan3QrCodeBase64,
+            plan3QrOnlyMode = cfg.plan3QrOnlyMode,
+            dailyReviewLimitPerUser = cfg.dailyReviewLimitPerUser,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            plan1Enabled = p1Enabled,
+            customPlans = customList,
+            todayProfitBanner = cfg.todayProfitBanner(),
+            announcementTicker = cfg.announcementTicker()
+        )
+    }
+
+    fun upsertPlanInStudio(
+        slotIndex: Int,
+        planId: String,
+        name: String,
+        priceInr: Double,
+        validityDays: Long,
+        badge: String,
+        qrCodeBase64: String,
+        qrOnlyMode: Boolean,
+        enabled: Boolean
+    ) {
+        val cfg = pricingConfig.value
+        var p1Name = cfg.planName
+        var p1Price = cfg.priceInr
+        var p1Days = cfg.validityDays
+        var p1Qr = cfg.qrCodeBase64
+        var p1QrOnly = cfg.qrOnlyMode
+        var p1Enabled = cfg.isPlan1Enabled()
+
+        var p2Enabled = cfg.plan2Enabled
+        var p2Name = cfg.plan2Name
+        var p2Price = cfg.plan2PriceInr
+        var p2Days = cfg.plan2ValidityDays
+        var p2Qr = cfg.plan2QrCodeBase64
+        var p2QrOnly = cfg.plan2QrOnlyMode
+
+        var p3Enabled = cfg.plan3Enabled
+        var p3Name = cfg.plan3Name
+        var p3Price = cfg.plan3PriceInr
+        var p3Days = cfg.plan3ValidityDays
+        var p3Qr = cfg.plan3QrCodeBase64
+        var p3QrOnly = cfg.plan3QrOnlyMode
+
+        var customList = cfg.customPlans().toMutableList()
+
+        when (slotIndex) {
+            1 -> {
+                p1Name = name.trim().ifBlank { "Monthly Pro Plan" }
+                p1Price = priceInr.coerceAtLeast(0.0)
+                p1Days = validityDays.coerceAtLeast(1L)
+                if (qrCodeBase64.isNotBlank()) p1Qr = qrCodeBase64
+                p1QrOnly = qrOnlyMode
+                p1Enabled = enabled
+            }
+            2 -> {
+                p2Name = name.trim().ifBlank { "Quarterly Elite Plan" }
+                p2Price = priceInr.coerceAtLeast(0.0)
+                p2Days = validityDays.coerceAtLeast(1L)
+                if (qrCodeBase64.isNotBlank()) p2Qr = qrCodeBase64
+                p2QrOnly = qrOnlyMode
+                p2Enabled = enabled
+            }
+            3 -> {
+                p3Name = name.trim().ifBlank { "Annual Institutional Plan" }
+                p3Price = priceInr.coerceAtLeast(0.0)
+                p3Days = validityDays.coerceAtLeast(1L)
+                if (qrCodeBase64.isNotBlank()) p3Qr = qrCodeBase64
+                p3QrOnly = qrOnlyMode
+                p3Enabled = enabled
+            }
+            else -> {
+                val targetId = planId.ifBlank { "cp_${System.currentTimeMillis() % 100000}" }
+                val newItem = CustomPlanItem(
+                    id = targetId,
+                    name = name.trim().ifBlank { "Custom VIP Plan" },
+                    priceInr = priceInr.coerceAtLeast(0.0),
+                    validityDays = validityDays.coerceAtLeast(1L),
+                    enabled = enabled,
+                    badge = badge.trim().ifBlank { "Custom Tier" }
+                )
+                val existingIdx = customList.indexOfFirst { it.id == targetId }
+                if (existingIdx >= 0) {
+                    customList[existingIdx] = newItem
+                } else {
+                    if (customList.size >= 5) {
+                        _statusMessage.value = "Maximum 5 custom plans supported in addition to the 3 primary tiers."
+                        return
+                    }
+                    customList.add(newItem)
+                }
+            }
+        }
+
+        savePricingAndQrConfig(
+            planName = p1Name,
+            priceInr = p1Price,
+            validityDays = p1Days,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = p1Qr,
+            qrOnlyMode = p1QrOnly,
+            plan2Enabled = p2Enabled,
+            plan2Name = p2Name,
+            plan2PriceInr = p2Price,
+            plan2ValidityDays = p2Days,
+            plan2QrCodeBase64 = p2Qr,
+            plan2QrOnlyMode = p2QrOnly,
+            plan3Enabled = p3Enabled,
+            plan3Name = p3Name,
+            plan3PriceInr = p3Price,
+            plan3ValidityDays = p3Days,
+            plan3QrCodeBase64 = p3Qr,
+            plan3QrOnlyMode = p3QrOnly,
+            dailyReviewLimitPerUser = cfg.dailyReviewLimitPerUser,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            plan1Enabled = p1Enabled,
+            customPlans = customList,
+            todayProfitBanner = cfg.todayProfitBanner(),
+            announcementTicker = cfg.announcementTicker()
+        )
+    }
+
+    fun deletePlanInStudio(planOption: SubscriptionPlanOption) {
+        val cfg = pricingConfig.value
+        var p1Enabled = cfg.isPlan1Enabled()
+        var p2Enabled = cfg.plan2Enabled
+        var p3Enabled = cfg.plan3Enabled
+        var customList = cfg.customPlans()
+        when (planOption.slotIndex) {
+            1 -> p1Enabled = false
+            2 -> p2Enabled = false
+            3 -> p3Enabled = false
+            else -> {
+                customList = customList.filterNot { it.id == planOption.id }
+            }
+        }
+        savePricingAndQrConfig(
+            planName = cfg.planName,
+            priceInr = cfg.priceInr,
+            validityDays = cfg.validityDays,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = cfg.qrCodeBase64,
+            qrOnlyMode = cfg.qrOnlyMode,
+            plan2Enabled = p2Enabled,
+            plan2Name = cfg.plan2Name,
+            plan2PriceInr = cfg.plan2PriceInr,
+            plan2ValidityDays = cfg.plan2ValidityDays,
+            plan2QrCodeBase64 = cfg.plan2QrCodeBase64,
+            plan2QrOnlyMode = cfg.plan2QrOnlyMode,
+            plan3Enabled = p3Enabled,
+            plan3Name = cfg.plan3Name,
+            plan3PriceInr = cfg.plan3PriceInr,
+            plan3ValidityDays = cfg.plan3ValidityDays,
+            plan3QrCodeBase64 = cfg.plan3QrCodeBase64,
+            plan3QrOnlyMode = cfg.plan3QrOnlyMode,
+            dailyReviewLimitPerUser = cfg.dailyReviewLimitPerUser,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            plan1Enabled = p1Enabled,
+            customPlans = customList,
+            todayProfitBanner = cfg.todayProfitBanner(),
+            announcementTicker = cfg.announcementTicker()
+        )
+    }
+
+    fun updateTodayProfitBannerAndOptionalCard(
+        banner: TodayProfitBanner,
+        alsoPublishCardInFeed: Boolean
+    ) {
+        val cfg = pricingConfig.value
+        savePricingAndQrConfig(
+            planName = cfg.planName,
+            priceInr = cfg.priceInr,
+            validityDays = cfg.validityDays,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = cfg.qrCodeBase64,
+            qrOnlyMode = cfg.qrOnlyMode,
+            plan2Enabled = cfg.plan2Enabled,
+            plan2Name = cfg.plan2Name,
+            plan2PriceInr = cfg.plan2PriceInr,
+            plan2ValidityDays = cfg.plan2ValidityDays,
+            plan2QrCodeBase64 = cfg.plan2QrCodeBase64,
+            plan2QrOnlyMode = cfg.plan2QrOnlyMode,
+            plan3Enabled = cfg.plan3Enabled,
+            plan3Name = cfg.plan3Name,
+            plan3PriceInr = cfg.plan3PriceInr,
+            plan3ValidityDays = cfg.plan3ValidityDays,
+            plan3QrCodeBase64 = cfg.plan3QrCodeBase64,
+            plan3QrOnlyMode = cfg.plan3QrOnlyMode,
+            dailyReviewLimitPerUser = cfg.dailyReviewLimitPerUser,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            plan1Enabled = cfg.isPlan1Enabled(),
+            customPlans = cfg.customPlans(),
+            todayProfitBanner = banner,
+            announcementTicker = cfg.announcementTicker()
+        )
+        if (alsoPublishCardInFeed && banner.enabled) {
+            viewModelScope.launch {
+                repository.publishOwnerProfitCard(
+                    profile = userProfile.value,
+                    amountText = banner.amountText,
+                    instrumentText = banner.instrumentText,
+                    roiPercent = banner.roiPercent,
+                    isProfit = banner.isProfit,
+                    noteText = banner.noteText
+                ).onSuccess {
+                    _statusMessage.value = "Today's P&L Banner updated & Trade Result Card posted to Commodity!"
+                }
+            }
+        }
+    }
+
+    fun updateAnnouncementTicker(ticker: String) {
+        val cfg = pricingConfig.value
+        savePricingAndQrConfig(
+            planName = cfg.planName,
+            priceInr = cfg.priceInr,
+            validityDays = cfg.validityDays,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = cfg.qrCodeBase64,
+            qrOnlyMode = cfg.qrOnlyMode,
+            plan2Enabled = cfg.plan2Enabled,
+            plan2Name = cfg.plan2Name,
+            plan2PriceInr = cfg.plan2PriceInr,
+            plan2ValidityDays = cfg.plan2ValidityDays,
+            plan2QrCodeBase64 = cfg.plan2QrCodeBase64,
+            plan2QrOnlyMode = cfg.plan2QrOnlyMode,
+            plan3Enabled = cfg.plan3Enabled,
+            plan3Name = cfg.plan3Name,
+            plan3PriceInr = cfg.plan3PriceInr,
+            plan3ValidityDays = cfg.plan3ValidityDays,
+            plan3QrCodeBase64 = cfg.plan3QrCodeBase64,
+            plan3QrOnlyMode = cfg.plan3QrOnlyMode,
+            dailyReviewLimitPerUser = cfg.dailyReviewLimitPerUser,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            plan1Enabled = cfg.isPlan1Enabled(),
+            customPlans = cfg.customPlans(),
+            todayProfitBanner = cfg.todayProfitBanner(),
+            announcementTicker = ticker
+        )
+    }
+
+    fun toggleTelegramReaction(targetId: String, emoji: String) {
+        if (targetId.isBlank() || emoji.isBlank()) return
+        val key = "$targetId|$emoji"
+        val alreadyReacted = myReactedKeys.value.contains(key)
+        if (alreadyReacted) {
+            _optimisticReactionAdds.value = _optimisticReactionAdds.value - key
+            if (isUserAdmin.value) {
+                val matchingDoc = rawCommunityReviews.value.firstOrNull {
+                    it.isEmojiReactionDoc() &&
+                        it.userId == currentUserId &&
+                        it.tradeMessageId.trim() == targetId &&
+                        it.publicContent.trim() == emoji
+                }
+                if (matchingDoc != null && matchingDoc.id.isNotBlank()) {
+                    viewModelScope.launch {
+                        repository.deleteCommunityReview(matchingDoc.id)
+                    }
+                }
+            }
+        } else {
+            _optimisticReactionAdds.value = _optimisticReactionAdds.value + key
+            viewModelScope.launch {
+                repository.sendTelegramReaction(
+                    profile = userProfile.value,
+                    targetId = targetId,
+                    emoji = emoji
+                )
+            }
+        }
+    }
+
+    fun bulkExtendActiveSubscribers(extraDays: Int) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                repository.bulkExtendActiveSubscribers(allUsersForAdmin.value, extraDays)
+                    .onSuccess { count ->
+                        _statusMessage.value = "Extended validity by +$extraDays days for $count active members!"
+                    }
+                    .onFailure { err ->
+                        _statusMessage.value = err.localizedMessage ?: "Bulk extension failed."
+                    }
+            } catch (e: CancellationException) {
+                throw e
+            } finally {
+                _isBusy.value = false
+            }
+        }
+    }
+
+    fun clearUnpinnedCommodityMessages() {
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                repository.clearUnpinnedCommodityMessages(communityReviews.value)
+                    .onSuccess { count ->
+                        _statusMessage.value = "Cleared $count unpinned Commodity messages."
+                    }
+                    .onFailure { err ->
+                        _statusMessage.value = err.localizedMessage ?: "Failed to clear Commodity chat."
+                    }
             } catch (e: CancellationException) {
                 throw e
             } finally {

@@ -12,6 +12,8 @@ import kotlin.math.ceil
 const val PRIMARY_ADMIN_EMAIL = "atharvagarg456@gmail.com"
 const val MAX_ADMINS_LIMIT = 3
 
+val TELEGRAM_REACTION_EMOJIS = listOf("🔥", "🚀", "💰", "💎", "👏", "❤️", "👍")
+
 const val COMMODITY_IDENTITY_WARNING =
     "WARNING: Do not disclose your identity, phone number, email, or personal ID to anybody. " +
         "That may lead to immediate suspension of your account with NO REFUND."
@@ -30,11 +32,40 @@ Each account is bound to your hardware Device ID and network telemetry. The 7-Da
 In the Commodity section, you must NEVER disclose your personal identity, phone number, email address, UPI ID, or social/personal handles to anybody. Attempting to send phone numbers or personal IDs is automatically blocked and reported to the Admin. Any violation or abusive behavior will result in immediate account suspension and permanent device ban with NO REFUND.
 """
 
-enum class AppThemePreference {
-    SYSTEM,
-    LIGHT,
-    DARK
+enum class AppThemePreference(val title: String, val subtitle: String) {
+    DARK("Obsidian Terminal", "Deep OLED Carbon & Emerald"),
+    CYBER_EMERALD("Cyber Matrix", "Neon Bullish Emerald Glow"),
+    ROYAL_GOLD("Royal Bullion", "Institutional Gold & Onyx"),
+    MIDNIGHT_SAPPHIRE("Wall Street Pro", "Electric Sapphire & Navy"),
+    LIGHT("Daylight Desk", "Crisp High-Contrast Light"),
+    SYSTEM("System Auto", "Follow Device Appearance")
 }
+
+data class CustomPlanItem(
+    val id: String = "",
+    val name: String = "",
+    val priceInr: Double = 0.0,
+    val validityDays: Long = 30L,
+    val enabled: Boolean = true,
+    val qrOnlyMode: Boolean = false,
+    val badge: String = "CUSTOM VIP",
+    val badgeText: String = badge,
+    val qrCodeBase64: String = ""
+)
+
+data class TodayProfitBanner(
+    val enabled: Boolean = true,
+    val isActive: Boolean = enabled,
+    val amountText: String = "+₹48,500",
+    val profitAmountText: String = amountText,
+    val instrumentText: String = "MCX GOLD & SILVER",
+    val instrumentName: String = instrumentText,
+    val roiPercent: String = "+18.4% Intraday",
+    val roiText: String = roiPercent,
+    val noteText: String = "Institutional breakout targets achieved today",
+    val isProfit: Boolean = true,
+    val updatedAtMillis: Long = 0L
+)
 
 @IgnoreExtraProperties
 data class UserProfile(
@@ -110,7 +141,7 @@ data class BroadcastMessage(
     @DocumentId val id: String = "",
     val title: String = "",
     val content: String = "",
-    val category: String = "Commodity",
+    val category: String = "NONE",
     val riskLevel: String = "MEDIUM", // LOW, MEDIUM, HIGH
     val markedPhotoBase64: String = "",
     val linkUrl: String = "",
@@ -126,7 +157,18 @@ data class BroadcastMessage(
     val visibility: String = "VERIFIED_MEMBERS",
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
-)
+) {
+    fun hasDisplayCategory(): Boolean {
+        val clean = category.trim().uppercase(Locale.ROOT)
+        return clean.isNotBlank() && clean != "NONE" && clean != "OPTIONAL" && clean != "GENERAL"
+    }
+
+    fun hasDisplayRiskLevel(): Boolean {
+        if (replyToRiskLevel.equals("NONE", ignoreCase = true)) return false
+        val clean = riskLevel.trim().uppercase(Locale.ROOT)
+        return clean in listOf("LOW", "MEDIUM", "HIGH")
+    }
+}
 
 @IgnoreExtraProperties
 data class MessageReadReceipt(
@@ -140,14 +182,26 @@ data class MessageReadReceipt(
     @ServerTimestamp val viewedAt: Timestamp? = null
 )
 
-data class SubscriptionPlanTier(
-    val tierIndex: Int,
-    val planName: String,
-    val priceInr: Double,
-    val validityDays: Long,
-    val qrCodeBase64: String,
-    val qrOnlyMode: Boolean
-)
+data class SubscriptionPlanOption(
+    val id: String = "plan_1",
+    val slotIndex: Int = 1,
+    val name: String = "Monthly Pro Plan",
+    val priceInr: Double = 2499.0,
+    val validityDays: Long = 30L,
+    val qrCodeBase64: String = "",
+    val qrOnlyMode: Boolean = false,
+    val enabled: Boolean = true,
+    val badge: String = "CORE PLAN",
+    val isCustom: Boolean = false
+) {
+    val tierIndex: Int get() = slotIndex
+    val customPlanId: String get() = if (isCustom) id else ""
+    val planName: String get() = name
+    val badgeText: String get() = badge
+    val isCustomPlan: Boolean get() = isCustom
+}
+
+typealias SubscriptionPlanTier = SubscriptionPlanOption
 
 @IgnoreExtraProperties
 data class PricingConfig(
@@ -184,42 +238,211 @@ data class PricingConfig(
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
-    fun availablePlans(): List<SubscriptionPlanTier> {
-        val list = mutableListOf(
-            SubscriptionPlanTier(
-                tierIndex = 1,
-                planName = planName.ifBlank { "Monthly Pro Plan" },
-                priceInr = priceInr,
-                validityDays = validityDays.coerceAtLeast(1L),
-                qrCodeBase64 = qrCodeBase64,
-                qrOnlyMode = qrOnlyMode
-            )
+    fun isPlan1Enabled(): Boolean {
+        val meta = benefits.firstOrNull {
+            it.startsWith("__META_P1_EN__:") || it.startsWith("__META_PLAN1_ENABLED__:")
+        }
+        return meta?.substringAfter(":")?.trim()?.toBooleanStrictOrNull() ?: true
+    }
+
+    fun customPlans(): List<CustomPlanItem> {
+        val fromMulti = benefits.filter { it.startsWith("__META_PLAN__:") }.mapNotNull { entry ->
+            val parts = entry.removePrefix("__META_PLAN__:").split("|")
+            if (parts.size >= 5) {
+                val badgeVal = parts.getOrNull(5)?.ifBlank { "CUSTOM VIP" } ?: "CUSTOM VIP"
+                CustomPlanItem(
+                    id = parts[0],
+                    name = parts[1],
+                    priceInr = parts[2].toDoubleOrNull() ?: 1999.0,
+                    validityDays = parts[3].toLongOrNull() ?: 30L,
+                    enabled = parts[4].toBooleanStrictOrNull() ?: (parts[4] != "0"),
+                    qrOnlyMode = parts.getOrNull(6)?.let { it == "true" || it == "1" } ?: false,
+                    badge = badgeVal,
+                    badgeText = badgeVal,
+                    qrCodeBase64 = parts.getOrNull(7).orEmpty()
+                )
+            } else {
+                null
+            }
+        }
+        return fromMulti
+    }
+
+    fun todayProfitBanner(): TodayProfitBanner {
+        val meta = benefits.firstOrNull { it.startsWith("__META_PNL__:") }
+            ?: return TodayProfitBanner()
+        val parts = meta.removePrefix("__META_PNL__:").split("|")
+        if (parts.size < 6) return TodayProfitBanner()
+        val active = parts[0].toBooleanStrictOrNull() ?: true
+        val amt = parts[1].ifBlank { "+₹48,500" }
+        val inst = parts[2].ifBlank { "MCX GOLD & SILVER" }
+        val roi = parts[3].ifBlank { "+18.4% Today" }
+        val note = parts[4].ifBlank { "Institutional breakout targets achieved" }
+        val isProf = parts[5].toBooleanStrictOrNull() ?: true
+        val ts = parts.getOrNull(6)?.toLongOrNull() ?: 0L
+        return TodayProfitBanner(
+            enabled = active,
+            isActive = active,
+            amountText = amt,
+            profitAmountText = amt,
+            instrumentText = inst,
+            instrumentName = inst,
+            roiPercent = roi,
+            roiText = roi,
+            noteText = note,
+            isProfit = isProf,
+            updatedAtMillis = ts
         )
-        if (plan2Enabled && plan2Name.isNotBlank()) {
+    }
+
+    fun announcementTicker(): String {
+        val meta = benefits.firstOrNull { it.startsWith("__META_TICKER__:") }
+        return meta?.removePrefix("__META_TICKER__:")?.trim()
+            ?: "LIVE MARKET DESK • Instant Trade Broadcasts & Commodity P&L Stream Active"
+    }
+
+    fun displayBenefits(): List<String> = publicBenefits()
+
+    fun publicBenefits(): List<String> {
+        val filtered = benefits.filterNot { it.startsWith("__META_") }
+        return if (filtered.isEmpty()) {
+            listOf(
+                "Real-time verified trade & commodity broadcasts",
+                "Marked chart setups with support & resistance zones"
+            )
+        } else {
+            filtered
+        }
+    }
+
+    fun allPlansForAdmin(): List<SubscriptionPlanOption> {
+        val list = mutableListOf<SubscriptionPlanOption>()
+        if (planName.isNotBlank() && planName != "__DELETED__") {
             list.add(
-                SubscriptionPlanTier(
-                    tierIndex = 2,
-                    planName = plan2Name,
-                    priceInr = plan2PriceInr,
-                    validityDays = plan2ValidityDays.coerceAtLeast(1L),
-                    qrCodeBase64 = plan2QrCodeBase64.ifBlank { qrCodeBase64 },
-                    qrOnlyMode = plan2QrOnlyMode
+                SubscriptionPlanOption(
+                    id = "plan_1",
+                    slotIndex = 1,
+                    name = planName,
+                    priceInr = priceInr,
+                    validityDays = validityDays.coerceAtLeast(1L),
+                    qrCodeBase64 = qrCodeBase64,
+                    qrOnlyMode = qrOnlyMode,
+                    enabled = isPlan1Enabled(),
+                    badge = "CORE PLAN",
+                    isCustom = false
                 )
             )
         }
-        if (plan3Enabled && plan3Name.isNotBlank()) {
+        if (plan2Name.isNotBlank() && plan2Name != "__DELETED__") {
             list.add(
-                SubscriptionPlanTier(
-                    tierIndex = 3,
-                    planName = plan3Name,
+                SubscriptionPlanOption(
+                    id = "plan_2",
+                    slotIndex = 2,
+                    name = plan2Name,
+                    priceInr = plan2PriceInr,
+                    validityDays = plan2ValidityDays.coerceAtLeast(1L),
+                    qrCodeBase64 = plan2QrCodeBase64.ifBlank { qrCodeBase64 },
+                    qrOnlyMode = plan2QrOnlyMode,
+                    enabled = plan2Enabled,
+                    badge = "MOST POPULAR",
+                    isCustom = false
+                )
+            )
+        }
+        if (plan3Name.isNotBlank() && plan3Name != "__DELETED__") {
+            list.add(
+                SubscriptionPlanOption(
+                    id = "plan_3",
+                    slotIndex = 3,
+                    name = plan3Name,
                     priceInr = plan3PriceInr,
                     validityDays = plan3ValidityDays.coerceAtLeast(1L),
                     qrCodeBase64 = plan3QrCodeBase64.ifBlank { qrCodeBase64 },
-                    qrOnlyMode = plan3QrOnlyMode
+                    qrOnlyMode = plan3QrOnlyMode,
+                    enabled = plan3Enabled,
+                    badge = "INSTITUTIONAL",
+                    isCustom = false
+                )
+            )
+        }
+        customPlans().forEachIndexed { idx, custom ->
+            list.add(
+                SubscriptionPlanOption(
+                    id = custom.id.ifBlank { "custom_${idx + 1}" },
+                    slotIndex = 4 + idx,
+                    name = custom.name,
+                    priceInr = custom.priceInr,
+                    validityDays = custom.validityDays.coerceAtLeast(1L),
+                    qrCodeBase64 = custom.qrCodeBase64.ifBlank { qrCodeBase64 },
+                    qrOnlyMode = custom.qrOnlyMode || qrOnlyMode,
+                    enabled = custom.enabled,
+                    badge = custom.badge.ifBlank { custom.badgeText },
+                    isCustom = true
                 )
             )
         }
         return list
+    }
+
+    fun availablePlans(): List<SubscriptionPlanOption> {
+        val enabledList = allPlansForAdmin().filter { it.enabled }
+        return if (enabledList.isNotEmpty()) {
+            enabledList
+        } else {
+            listOf(
+                SubscriptionPlanOption(
+                    id = "plan_1",
+                    slotIndex = 1,
+                    name = planName.takeUnless { it == "__DELETED__" || it.isBlank() } ?: "Monthly Pro Plan",
+                    priceInr = priceInr,
+                    validityDays = validityDays.coerceAtLeast(1L),
+                    qrCodeBase64 = qrCodeBase64,
+                    qrOnlyMode = qrOnlyMode,
+                    enabled = true,
+                    badge = "ACTIVE",
+                    isCustom = false
+                )
+            )
+        }
+    }
+
+    companion object {
+        fun buildBenefitsWithMeta(
+            displayBenefits: List<String>,
+            plan1Enabled: Boolean,
+            customPlans: List<CustomPlanItem>,
+            todayProfit: TodayProfitBanner,
+            announcementTicker: String
+        ): List<String> {
+            val result = mutableListOf<String>()
+            result.add("__META_P1_EN__:$plan1Enabled")
+            val cleanPnlAmount = todayProfit.amountText.replace("|", " ").take(28)
+            val cleanInst = todayProfit.instrumentText.replace("|", " ").take(32)
+            val cleanRoi = todayProfit.roiPercent.replace("|", " ").take(24)
+            val cleanNote = todayProfit.noteText.replace("|", " ").take(55)
+            result.add(
+                "__META_PNL__:${todayProfit.enabled}|$cleanPnlAmount|$cleanInst|$cleanRoi|$cleanNote|${todayProfit.isProfit}|${todayProfit.updatedAtMillis}".take(195)
+            )
+            if (announcementTicker.isNotBlank()) {
+                result.add("__META_TICKER__:${announcementTicker.replace("\n", " ").take(160)}")
+            }
+            customPlans.take(5).forEach { cp ->
+                val safeId = cp.id.ifBlank { "cp_${System.currentTimeMillis()}" }.replace("|", "").take(20)
+                val safeName = cp.name.replace("|", " ").take(45)
+                val safeBadge = cp.badge.ifBlank { cp.badgeText }.replace("|", " ").take(20)
+                result.add(
+                    "__META_PLAN__:$safeId|$safeName|${cp.priceInr.toInt()}|${cp.validityDays}|${cp.enabled}|$safeBadge|${cp.qrOnlyMode}".take(195)
+                )
+            }
+            val remainingSlots = (10 - result.size).coerceAtLeast(0)
+            displayBenefits
+                .filterNot { it.startsWith("__META_") }
+                .map { it.trim().take(190) }
+                .filter { it.isNotBlank() }
+                .take(remainingSlots)
+                .forEach { result.add(it) }
+            return result.take(10)
+        }
     }
 }
 
@@ -271,7 +494,28 @@ data class CommunityReview(
     val visibility: String = "VERIFIED_MEMBERS",
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
-)
+) {
+    fun isEmojiReactionDoc(): Boolean = topicTag == "__REACTION__"
+
+    fun isOwnerProfitCard(): Boolean = topicTag.startsWith("PROFIT_CARD|")
+
+    fun parseOwnerProfitCard(): TodayProfitBanner? {
+        if (!isOwnerProfitCard()) return null
+        val parts = topicTag.removePrefix("PROFIT_CARD|").split("|")
+        val amount = parts.getOrNull(0)?.ifBlank { "+₹0" } ?: "+₹0"
+        val instrument = parts.getOrNull(1)?.ifBlank { "COMMODITY TRADE" } ?: "COMMODITY TRADE"
+        val roi = parts.getOrNull(2)?.ifBlank { "LIVE P&L" } ?: "LIVE P&L"
+        val isProfit = !amount.trim().startsWith("-")
+        return TodayProfitBanner(
+            isActive = true,
+            profitAmountText = amount,
+            instrumentName = instrument,
+            roiText = roi,
+            noteText = publicContent,
+            isProfit = isProfit
+        )
+    }
+}
 
 @IgnoreExtraProperties
 data class ModerationAlert(
