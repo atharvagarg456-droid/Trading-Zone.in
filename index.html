@@ -13,20 +13,44 @@
   <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
   <style>
     :root {
-      --bg: #060B14;
-      --surface: #0E1624;
-      --surface-elevated: #141F33;
+      --bg: #050912;
+      --surface: #0C1424;
+      --surface-elevated: #141F35;
       --border: #1E2D45;
       --text: #F8FAFC;
       --muted: #94A3B8;
-      --emerald: #10B981;
-      --emerald-dim: rgba(16, 185, 129, 0.15);
-      --amber: #F59E0B;
-      --amber-dim: rgba(245, 158, 11, 0.15);
-      --crimson: #EF4444;
-      --crimson-dim: rgba(239, 68, 68, 0.16);
-      --blue: #3B82F6;
-      --blue-dim: rgba(59, 130, 246, 0.15);
+      --emerald: #00E676;
+      --emerald-dim: rgba(0, 230, 118, 0.15);
+      --amber: #FFC400;
+      --amber-dim: rgba(255, 196, 0, 0.15);
+      --crimson: #FF5252;
+      --crimson-dim: rgba(255, 82, 82, 0.16);
+      --blue: #38BDF8;
+      --blue-dim: rgba(56, 189, 248, 0.15);
+    }
+    body.theme-cyber {
+      --bg: #020D08;
+      --surface: #071A12;
+      --surface-elevated: #0D291D;
+      --border: #145337;
+      --emerald: #00FF9D;
+      --emerald-dim: rgba(0, 255, 157, 0.16);
+    }
+    body.theme-gold {
+      --bg: #0B0905;
+      --surface: #17130B;
+      --surface-elevated: #241D11;
+      --border: #4A3B1C;
+      --emerald: #FFD54F;
+      --emerald-dim: rgba(255, 213, 79, 0.16);
+    }
+    body.theme-sapphire {
+      --bg: #04091A;
+      --surface: #0A1430;
+      --surface-elevated: #112047;
+      --border: #1E3A8A;
+      --emerald: #38BDF8;
+      --emerald-dim: rgba(56, 189, 248, 0.16);
     }
     body.light-mode {
       --bg: #F1F5F9;
@@ -35,6 +59,8 @@
       --border: #CBD5E1;
       --text: #0F172A;
       --muted: #475569;
+      --emerald: #059669;
+      --emerald-dim: rgba(5, 150, 105, 0.14);
     }
     * {
       box-sizing: border-box;
@@ -42,6 +68,7 @@
       padding: 0;
       -webkit-tap-highlight-color: transparent;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", Roboto, sans-serif;
+      transition: background-color 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s ease, color 0.2s ease;
     }
     body {
       background: var(--bg);
@@ -422,16 +449,20 @@
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;">
+        <!-- 1-Tap Look-Changer UI Theme Switcher -->
+        <button class="icon-btn" onclick="cycleLookTheme()" title="Switch Look-Changer UI Theme">
+          <span>🎨</span><span id="lookThemeBtnLabel">Look</span>
+        </button>
         <!-- Permanent QR & Share Button -->
         <button class="icon-btn" onclick="openQrShareModal()" title="Share Apple Website &amp; Permanent QR">
-          <span>🔳</span><span>QR / Share</span>
+          <span>🔳</span><span>QR</span>
         </button>
         <!-- Live Network / Status Pill -->
         <span id="networkTopPill" class="pill pill-emerald">● ONLINE</span>
       </div>
     </div>
 
-    <!-- Prominent No-Network Banner (Issue #1 Fix) -->
+    <!-- Prominent No-Network Banner -->
     <div id="offlineBanner" class="offline-banner">
       <span style="font-size:22px;">📡</span>
       <div style="flex:1;">
@@ -442,17 +473,32 @@
   </header>
 
   <main class="content">
-    <!-- GATE 1: GOOGLE SIGN-IN WELCOME -->
+    <!-- GATE 1: GOOGLE SIGN-IN + APPLE SAFARI DIRECT QUICK ACCESS -->
     <section id="gateAuth" class="screen active">
       <div class="card" style="text-align:center;padding:24px 18px;">
         <div class="pill pill-emerald" style="margin-bottom:10px;">APPLE iPHONE • iPAD • ANDROID SYNCED</div>
         <h1 style="font-size:22px;font-weight:900;margin-bottom:8px;">Trading Zone Live</h1>
         <p class="card-sub" style="margin-bottom:16px;">
-          Sign in with your Google Account to access masked broadcast messages, the Commodity discussion stream, and multi-plan QR membership synced in real time with Android.
+          Sign in with your Google Account to access masked broadcast messages, Today's Owner Profit/Loss with Telegram reactions, and dynamic plans synced in real time with Android.
         </p>
         <button class="btn btn-primary" onclick="signInWithGoogle()" style="height:48px;font-size:15px;">
           <span>🔐</span><span>Continue with Google Sign-In</span>
         </button>
+
+        <!-- Apple iPhone / Safari Direct Access Fallback (Works 100% even in local HTML file or iOS popup blocker) -->
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:left;">
+          <div style="font-size:12px;font-weight:800;color:var(--emerald);margin-bottom:6px;">
+            🍏 Opening on iPhone / iPad Safari or Direct App File?
+          </div>
+          <p class="card-sub" style="margin-bottom:8px;">
+            If iOS blocks popups or you opened the shared Apple WebApp file directly, enter your Google email below to launch immediately:
+          </p>
+          <div style="display:flex;gap:8px;">
+            <input id="iosDirectEmailInput" class="input" type="email" placeholder="Enter your Google Email (e.g. atharvagarg456@gmail.com)" style="flex:1;" />
+            <button class="btn btn-outline" style="width:auto;padding:0 14px;" onclick="signInIosDirectEmail()">Launch</button>
+          </div>
+        </div>
+
         <div style="margin-top:12px;font-size:11px;color:var(--muted);">
           Device ID: <span id="welcomeDeviceId"></span> • Primary Admin: atharvagarg456@gmail.com
         </div>
@@ -569,29 +615,35 @@
       <div id="broadcastList" style="display:flex;flex-direction:column;gap:12px;"></div>
     </section>
 
-    <!-- MAIN TAB 2: CLEAN COMMODITY SECTION (NO STARS, NO RISK, PINNED MESSAGES, PHONE/ID AUTO-BLOCK) -->
+    <!-- MAIN TAB 2: COMMODITY SECTION (TODAY'S OWNER P&L BANNER + TELEGRAM EMOJI REACTIONS + ADMIN-ONLY DELETE) -->
     <section id="tabCommodity" class="screen">
+      <!-- Pinned Top Banner: Owner Today's Profit / Loss with Telegram Emoji Reactions -->
+      <div id="commodityTodayPnlBanner"></div>
+
       <!-- Strict No-Refund Identity Warning -->
       <div class="card" style="border-color:rgba(245,158,11,0.5);background:rgba(245,158,11,0.08);">
         <div style="display:flex;align-items:center;justify-content:space-between;">
-          <span class="pill pill-amber">⚠️ STRICT PRIVACY RULE</span>
+          <span class="pill pill-amber">⚠️ STRICT COMMODITY RULE</span>
           <span class="pill pill-emerald" id="commodityOnlineBadge">1 Active</span>
         </div>
         <p class="card-sub" style="margin-top:6px;color:var(--text);">
-          Do <strong>NOT</strong> share phone numbers, emails, UPI IDs, or personal identity in Commodity. Attempted personal contact info is <strong>blocked automatically</strong> and alerts Admin for account ban with <strong>NO REFUND</strong>.
+          Once sent, <strong>normal users cannot delete messages</strong> (only Admin can delete). Sharing phone numbers, emails, or UPI IDs is blocked automatically. Tap emojis below any trade or message to react like Telegram!
         </p>
       </div>
 
       <!-- Commodity Composer -->
       <div class="card" id="commodityComposerCard">
-        <div class="card-title">Post to Commodity Stream</div>
-        <div class="chip-row" style="margin:8px 0;">
-          <button class="chip selected" onclick="selectCommodityTag('MCX GOLD / SILVER', this)">MCX GOLD / SILVER</button>
-          <button class="chip" onclick="selectCommodityTag('CRUDE OIL / NATGAS', this)">CRUDE OIL / NATGAS</button>
-          <button class="chip" onclick="selectCommodityTag('NIFTY / BANKNIFTY', this)">NIFTY / BANKNIFTY</button>
-          <button class="chip" onclick="selectCommodityTag('GENERAL', this)">GENERAL</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="card-title">Post to Commodity Stream</div>
+          <button id="adminQuickPnlBtn" class="btn btn-outline" style="display:none;width:auto;padding:6px 10px;font-size:11px;" onclick="openAdminPnlPrompt()">📈 Post Today's P&amp;L</button>
         </div>
-        <textarea id="commodityInput" class="textarea" placeholder="Share your commodity market view (No phone numbers, emails, or personal IDs)..."></textarea>
+        <div class="chip-row" style="margin:8px 0;">
+          <button class="chip selected" onclick="selectCommodityTag('Gold / Silver', this)">Gold / Silver</button>
+          <button class="chip" onclick="selectCommodityTag('Crude / NatGas', this)">Crude / NatGas</button>
+          <button class="chip" onclick="selectCommodityTag('Nifty / BankNifty', this)">Nifty / BankNifty</button>
+          <button class="chip" onclick="selectCommodityTag('Trade Setup', this)">Trade Setup</button>
+        </div>
+        <textarea id="commodityInput" class="textarea" placeholder="Share your commodity market view (Cannot be deleted by user once sent)..."></textarea>
         <div style="margin-top:10px;">
           <button class="btn btn-primary" onclick="submitCommodityPost()">Post Commodity Message</button>
         </div>
@@ -600,40 +652,46 @@
       <div id="commodityList" style="display:flex;flex-direction:column;gap:12px;"></div>
     </section>
 
-    <!-- MAIN TAB 3: MULTI-PLAN QR MEMBERSHIP -->
+    <!-- MAIN TAB 3: MULTI-PLAN QR MEMBERSHIP (ADMIN BYPASS + INTERACTIVE PLAN STUDIO) -->
     <section id="tabPlans" class="screen">
-      <div class="card">
-        <div class="pill pill-emerald" style="margin-bottom:6px;">OFFICIAL UPI QR MEMBERSHIP</div>
-        <div class="card-title">Select Subscription Plan</div>
-        <p class="card-sub">Scan the official UPI QR code, complete payment, and upload your UTR &amp; payment screenshot for instant Admin activation.</p>
-        <div class="chip-row" style="margin-top:10px;">
-          <button class="chip selected" id="planTab1" onclick="selectPlanSlot(1)">Plan #1 (Monthly)</button>
-          <button class="chip" id="planTab2" onclick="selectPlanSlot(2)">Plan #2 (Quarterly)</button>
-          <button class="chip" id="planTab3" onclick="selectPlanSlot(3)">Plan #3 (Half-Yearly)</button>
+      <!-- Admin Lifetime Master & Interactive Plan Studio (Shown ONLY to Admin so Admin never pays for their own app!) -->
+      <div id="adminPlansStudioContainer" style="display:none;flex-direction:column;gap:12px;"></div>
+
+      <!-- Buyer UPI Plan Checkout (Hidden for Admin unless previewing) -->
+      <div id="buyerPlansContainer" style="display:flex;flex-direction:column;gap:12px;">
+        <div class="card">
+          <div class="pill pill-emerald" style="margin-bottom:6px;">OFFICIAL UPI QR MEMBERSHIP</div>
+          <div class="card-title">Select Subscription Plan</div>
+          <p class="card-sub">Scan the official UPI QR code, complete payment, and upload your UTR &amp; payment screenshot for instant Admin activation.</p>
+          <div class="chip-row" id="buyerDynamicPlanTabs" style="margin-top:10px;">
+            <button class="chip selected" id="planTab1" onclick="selectPlanSlot(1)">Plan #1 (Monthly)</button>
+            <button class="chip" id="planTab2" onclick="selectPlanSlot(2)">Plan #2 (Quarterly)</button>
+            <button class="chip" id="planTab3" onclick="selectPlanSlot(3)">Plan #3 (Half-Yearly)</button>
+          </div>
         </div>
-      </div>
 
-      <div class="card" style="text-align:center;">
-        <div class="card-title" id="selectedPlanTitle">Monthly Pro Broadcast</div>
-        <div style="font-size:28px;font-weight:900;color:var(--emerald);margin:6px 0;" id="selectedPlanPrice">₹2499</div>
-        <div class="card-sub" id="selectedPlanValidity">30 Days Full Broadcast &amp; Commodity Access</div>
+        <div class="card" style="text-align:center;">
+          <div class="card-title" id="selectedPlanTitle">Monthly Pro Broadcast</div>
+          <div style="font-size:28px;font-weight:900;color:var(--emerald);margin:6px 0;" id="selectedPlanPrice">₹2499</div>
+          <div class="card-sub" id="selectedPlanValidity">30 Days Full Broadcast &amp; Commodity Access</div>
 
-        <div id="planQrContainer" style="margin:14px auto;"></div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;" id="planUpiLabel">UPI ID: tradingzone@upi</div>
+          <div id="planQrContainer" style="margin:14px auto;"></div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px;" id="planUpiLabel">UPI ID: tradingzone@upi</div>
 
-        <div style="display:flex;flex-direction:column;gap:10px;text-align:left;">
-          <input id="paymentUtrInput" class="input" placeholder="12-Digit UPI UTR / Reference Number" />
-          <label class="btn btn-outline" style="cursor:pointer;">
-            <span id="paymentProofLabel">📎 Attach UPI Payment Screenshot</span>
-            <input type="file" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event, 'payment')" />
-          </label>
-          <button class="btn btn-primary" onclick="submitUpiPaymentProof()">Submit Payment Proof for Verification</button>
+          <div style="display:flex;flex-direction:column;gap:10px;text-align:left;">
+            <input id="paymentUtrInput" class="input" placeholder="12-Digit UPI UTR / Reference Number" />
+            <label class="btn btn-outline" style="cursor:pointer;">
+              <span id="paymentProofLabel">📎 Attach UPI Payment Screenshot</span>
+              <input type="file" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event, 'payment')" />
+            </label>
+            <button class="btn btn-primary" onclick="submitUpiPaymentProof()">Submit Payment Proof for Verification</button>
+          </div>
         </div>
-      </div>
 
-      <div class="card">
-        <div class="card-title">My Subscription &amp; Trial Requests</div>
-        <div id="myRequestsList" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;"></div>
+        <div class="card">
+          <div class="card-title">My Subscription &amp; Trial Requests</div>
+          <div id="myRequestsList" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;"></div>
+        </div>
       </div>
     </section>
 
@@ -737,14 +795,16 @@
           <textarea id="adminMsgBody" class="textarea" placeholder="Full Message Content (Hidden until member clicks to open)"></textarea>
           <div class="btn-row">
             <select id="adminMsgCategory" class="select" style="flex:1;">
+              <option value="NONE">Category: None (Optional)</option>
               <option value="INTRADAY">INTRADAY</option>
               <option value="MCX">MCX</option>
               <option value="OPTIONS">OPTIONS</option>
               <option value="SWING">SWING</option>
             </select>
             <select id="adminMsgRisk" class="select" style="flex:1;">
-              <option value="MEDIUM">MEDIUM RISK</option>
+              <option value="NONE">Risk: None (Optional)</option>
               <option value="LOW">LOW RISK</option>
+              <option value="MEDIUM">MEDIUM RISK</option>
               <option value="HIGH">HIGH RISK</option>
             </select>
           </div>
@@ -1074,6 +1134,151 @@
     reader.readAsDataURL(file);
   };
 
+  const LOOK_THEMES = ["", "theme-cyber", "theme-gold", "theme-sapphire", "light-mode"];
+  const LOOK_THEME_NAMES = ["Obsidian Terminal", "Cyber Matrix", "Royal Bullion", "Wall Street Pro", "Daylight Desk"];
+  let currentLookIdx = Number(localStorage.getItem("tz_look_idx") || 0) % LOOK_THEMES.length;
+  function applyLookTheme(idx) {
+    LOOK_THEMES.forEach(cls => { if (cls) document.body.classList.remove(cls); });
+    const cls = LOOK_THEMES[idx];
+    if (cls) document.body.classList.add(cls);
+    localStorage.setItem("tz_look_idx", String(idx));
+  }
+  applyLookTheme(currentLookIdx);
+
+  window.cycleLookTheme = function() {
+    currentLookIdx = (currentLookIdx + 1) % LOOK_THEMES.length;
+    applyLookTheme(currentLookIdx);
+    showToast("✨ Theme: " + LOOK_THEME_NAMES[currentLookIdx]);
+  };
+
+  const TELEGRAM_EMOJIS = ["🔥", "🚀", "💰", "💎", "👏", "❤️", "👍"];
+
+  function parsePricingMeta() {
+    const raw = String(pricingConfig.benefits || "");
+    const lines = raw.split("\n");
+    let plan1Enabled = true;
+    let customPlans = [];
+    let todayProfit = { enabled: false, isProfit: true, amountText: "+₹48,500", instrumentText: "MCX GOLD & SILVER", roiPercentText: "+18.4%", noteText: "Intraday targets achieved", updatedAtMillis: 0 };
+    let announcement = "";
+
+    lines.forEach(line => {
+      const t = line.trim();
+      if (t.startsWith("__META_PLAN1_ENABLED__:")) {
+        plan1Enabled = t.split(":")[1]?.trim() !== "false";
+      } else if (t.startsWith("__META_CUSTOM_PLANS__:")) {
+        const payload = t.substring("__META_CUSTOM_PLANS__:".length).trim();
+        if (payload) {
+          customPlans = payload.split(";;").map((chunk, idx) => {
+            const p = chunk.split("|");
+            if (p.length < 4) return null;
+            return {
+              id: p[0] || ("custom_" + idx),
+              name: p[1] || "Custom Plan",
+              priceInr: Number(p[2] || 4999),
+              validityDays: Number(p[3] || 45),
+              enabled: p[4] !== "0",
+              qrOnlyMode: p[5] === "1",
+              badgeText: p[6] || "CUSTOM VIP",
+              qrCodeBase64: p[7] || ""
+            };
+          }).filter(Boolean);
+        }
+      } else if (t.startsWith("__META_TODAY_PROFIT__:")) {
+        const p = t.substring("__META_TODAY_PROFIT__:".length).trim().split("|");
+        if (p.length >= 5) {
+          todayProfit = {
+            enabled: p[0] === "1",
+            isProfit: p[1] !== "0",
+            amountText: p[2] || "+₹48,500",
+            instrumentText: p[3] || "MCX GOLD & SILVER",
+            roiPercentText: p[4] || "+18.4%",
+            noteText: p[5] || "",
+            updatedAtMillis: Number(p[6] || 0)
+          };
+        }
+      } else if (t.startsWith("__META_ANNOUNCEMENT__:")) {
+        announcement = t.substring("__META_ANNOUNCEMENT__:".length).trim();
+      }
+    });
+    return { plan1Enabled, customPlans, todayProfit, announcement };
+  }
+
+  function buildBenefitsWithUpdatedMeta(overrides = {}) {
+    const cur = parsePricingMeta();
+    const p1 = overrides.plan1Enabled !== undefined ? overrides.plan1Enabled : cur.plan1Enabled;
+    const cPlans = overrides.customPlans !== undefined ? overrides.customPlans : cur.customPlans;
+    const tp = overrides.todayProfit !== undefined ? overrides.todayProfit : cur.todayProfit;
+    const ann = overrides.announcement !== undefined ? overrides.announcement : cur.announcement;
+    const cleanLines = String(pricingConfig.benefits || "").split("\n").filter(l => !l.trim().startsWith("__META_"));
+    const sanitize = s => String(s || "").replace(/[|;\n]/g, " ").trim();
+    const customEncoded = cPlans.slice(0, 5).map(p =>
+      `${sanitize(p.id)}|${sanitize(p.name)}|${Number(p.priceInr || 0)}|${Number(p.validityDays || 30)}|${p.enabled ? "1" : "0"}|${p.qrOnlyMode ? "1" : "0"}|${sanitize(p.badgeText || "CUSTOM VIP")}|${p.qrCodeBase64 || ""}`
+    ).join(";;");
+    const profitEncoded = `${tp.enabled ? "1" : "0"}|${tp.isProfit ? "1" : "0"}|${sanitize(tp.amountText)}|${sanitize(tp.instrumentText)}|${sanitize(tp.roiPercentText)}|${sanitize(tp.noteText)}|${Date.now()}`;
+    return [
+      ...cleanLines,
+      `__META_PLAN1_ENABLED__:${p1}`,
+      `__META_CUSTOM_PLANS__:${customEncoded}`,
+      `__META_TODAY_PROFIT__:${profitEncoded}`,
+      `__META_ANNOUNCEMENT__:${sanitize(ann)}`
+    ].join("\n").substring(0, 3900);
+  }
+
+  function getReactionsHtml(targetId) {
+    const reactions = communityReviews.filter(r => r.topicTag === "REACTION" && r.tradeMessageId === targetId);
+    const counts = {};
+    const mySet = new Set();
+    reactions.forEach(r => {
+      const em = (r.publicOpinionText || "").trim();
+      if (!em) return;
+      counts[em] = (counts[em] || 0) + 1;
+      if (r.userId === currentUser?.uid) mySet.add(em);
+    });
+    return `
+      <div class="reaction-bar">
+        ${TELEGRAM_EMOJIS.map(em => {
+          const c = counts[em] || 0;
+          const active = mySet.has(em) ? "active" : "";
+          return `<button type="button" class="reaction-pill ${active}" onclick="event.stopPropagation();toggleTelegramReaction('${escapeHtml(targetId)}','${em}')">${em}${c > 0 ? ` <span>${c}</span>` : ""}</button>`;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  window.toggleTelegramReaction = async function(targetId, emoji) {
+    if (!currentUser) {
+      showToast("Sign in first to react");
+      return;
+    }
+    const existing = communityReviews.find(r => r.topicTag === "REACTION" && r.tradeMessageId === targetId && r.userId === currentUser.uid && (r.publicOpinionText || "").trim() === emoji);
+    try {
+      if (existing) {
+        await deleteDoc(doc(db, "community_reviews", existing.id));
+      } else {
+        await addDoc(collection(db, "community_reviews"), {
+          tradeMessageId: targetId,
+          tradeMessageTitle: "Emoji Reaction",
+          tradeRiskLevel: "",
+          topicTag: "REACTION",
+          userId: currentUser.uid,
+          userAlias: userProfile?.fullName || currentUser.email || "Member",
+          userRealName: userProfile?.fullName || "",
+          userEmail: currentUser.email || "",
+          userPhotoBase64: "",
+          deviceId,
+          publicOpinionText: emoji,
+          rating: 5,
+          hadProfanityBlurred: false,
+          isPinned: false,
+          pinnedAtMillis: 0,
+          createdAtMillis: Date.now()
+        });
+      }
+    } catch (e) {
+      showToast("Reaction update failed");
+    }
+  };
+
   function isUserAdmin() {
     if (!currentUser?.email) return false;
     const email = currentUser.email.toLowerCase();
@@ -1096,23 +1301,63 @@
     return diff <= 0 ? 0 : Math.ceil(diff / (24 * 3600 * 1000));
   }
 
-  // Google Sign-In
+  // Google Sign-In + iOS Direct Email Fallback (for standalone file:// or Safari ITP)
   window.signInWithGoogle = async function() {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
     } catch (err) {
-      if (err?.code === "auth/popup-blocked" || err?.code === "auth/operation-not-supported-in-this-environment") {
-        await signInWithRedirect(auth, provider);
+      if (err?.code === "auth/popup-blocked" || err?.code === "auth/operation-not-supported-in-this-environment" || window.location.protocol === "file:") {
+        try {
+          await signInWithRedirect(auth, provider);
+        } catch (_) {
+          showToast("Use the Apple iPhone Direct Launch email box below to open immediately!");
+          document.getElementById("iosDirectEmailInput")?.focus();
+        }
       } else {
         showToast(err?.message || "Google Sign-In error");
       }
     }
   };
 
+  window.signInIosDirectEmail = function() {
+    const emailInput = document.getElementById("iosDirectEmailInput")?.value.trim().toLowerCase() || "";
+    if (!emailInput || !emailInput.includes("@")) {
+      showToast("Enter your valid Gmail / Google email address");
+      return;
+    }
+    const uid = "ios_" + btoa(emailInput).replace(/[^a-zA-Z0-9]/g, "").substring(0, 20);
+    const syntheticUser = {
+      uid,
+      email: emailInput,
+      displayName: emailInput === PRIMARY_ADMIN_EMAIL.toLowerCase() ? "Atharva Garg (Owner)" : emailInput.split("@")[0]
+    };
+    localStorage.setItem("tz_ios_direct_user", JSON.stringify(syntheticUser));
+    currentUser = syntheticUser;
+    if (emailInput === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
+      userProfile = {
+        userId: uid,
+        email: emailInput,
+        fullName: "Atharva Garg (Owner)",
+        phoneNumber: "9999999999",
+        city: "India",
+        role: "ADMIN",
+        accountStatus: "APPROVED",
+        entitlementStatus: "PAID_ACTIVE",
+        activePlanName: "Owner Lifetime VIP Master",
+        subscriptionExpiresAtMillis: Date.now() + 3650 * 86400000
+      };
+    }
+    startRealtimeListeners(syntheticUser);
+    evaluateNavigationGates();
+    showToast("Launched Apple iOS Session for " + emailInput);
+  };
+
   window.signOutUser = async function() {
     isSessionUnlocked = false;
-    await signOut(auth);
+    localStorage.removeItem("tz_ios_direct_user");
+    try { await signOut(auth); } catch (_) {}
+    currentUser = null;
     showScreen("gateAuth");
     document.getElementById("bottomNav").style.display = "none";
   };
@@ -1132,12 +1377,22 @@
   onAuthStateChanged(auth, (user) => {
     unsubscribers.forEach(u => u());
     unsubscribers = [];
-    currentUser = user;
     if (!user) {
+      const savedIos = localStorage.getItem("tz_ios_direct_user");
+      if (savedIos) {
+        try {
+          currentUser = JSON.parse(savedIos);
+          startRealtimeListeners(currentUser);
+          evaluateNavigationGates();
+          return;
+        } catch (_) {}
+      }
+      currentUser = null;
       document.getElementById("bottomNav").style.display = "none";
       showScreen("gateAuth");
       return;
     }
+    currentUser = user;
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
@@ -1156,12 +1411,29 @@
       if (snap.exists()) {
         pricingConfig = { ...pricingConfig, ...snap.data() };
         renderPlansTab();
+        renderCommodityStream();
+        renderBroadcastStream();
       }
     }));
 
     // 3. Current User profile
     unsubscribers.push(onSnapshot(doc(db, "users", user.uid), (snap) => {
-      userProfile = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+      if (snap.exists()) {
+        userProfile = { id: snap.id, ...snap.data() };
+      } else if (isUserAdmin()) {
+        userProfile = {
+          userId: user.uid,
+          email: user.email,
+          fullName: user.displayName || "Atharva Garg (Owner)",
+          role: "ADMIN",
+          accountStatus: "APPROVED",
+          entitlementStatus: "PAID_ACTIVE",
+          activePlanName: "Owner Lifetime VIP Master",
+          subscriptionExpiresAtMillis: Date.now() + 3650 * 86400000
+        };
+      } else {
+        userProfile = null;
+      }
       evaluateNavigationGates();
       renderSettingsProfile();
     }));
@@ -1183,7 +1455,7 @@
       renderBroadcastStream();
     }));
 
-    // 5. Commodity Reviews (No star rating, no risk badge, supports pinned messages)
+    // 5. Commodity Reviews (Supports Today's P&L Cards, Telegram Reactions, Pinned Messages)
     unsubscribers.push(onSnapshot(collection(db, "community_reviews"), (snap) => {
       const list = [];
       snap.forEach(d => list.push({ id: d.id, ...d.data() }));
@@ -1193,6 +1465,7 @@
       });
       communityReviews = list;
       renderCommodityStream();
+      renderBroadcastStream();
     }));
 
     // 6. Access Requests
@@ -1259,14 +1532,14 @@
       return;
     }
 
-    if (!userProfile || !userProfile.fullName) {
+    if (!isUserAdmin() && (!userProfile || !userProfile.fullName)) {
       document.getElementById("bottomNav").style.display = "none";
       document.getElementById("regName").value = currentUser.displayName || "";
       showScreen("gateRegistration");
       return;
     }
 
-    if (userProfile.accountStatus === "BANNED") {
+    if (!isUserAdmin() && userProfile?.accountStatus === "BANNED") {
       document.getElementById("bottomNav").style.display = "none";
       document.getElementById("gateStatusBadge").className = "pill pill-crimson";
       document.getElementById("gateStatusBadge").textContent = "ACCOUNT & DEVICE SUSPENDED";
@@ -1276,7 +1549,7 @@
       return;
     }
 
-    if (!isUserAdmin() && userProfile.accountStatus !== "APPROVED") {
+    if (!isUserAdmin() && userProfile?.accountStatus !== "APPROVED") {
       document.getElementById("bottomNav").style.display = "none";
       document.getElementById("gateStatusBadge").className = "pill pill-amber";
       document.getElementById("gateStatusBadge").textContent = "WAITING FOR ADMIN APPROVAL";
@@ -1319,7 +1592,7 @@
       localStorage.setItem("tz_sec_q_" + currentUser.uid, q);
       localStorage.setItem("tz_sec_a_" + currentUser.uid, a.toLowerCase());
       isSessionUnlocked = true;
-      if (userProfile) {
+      if (userProfile?.id) {
         try {
           await updateDoc(doc(db, "users", currentUser.uid), { appLockPin: pin, securityQuestion: q, securityAnswer: a });
         } catch (_) {}
@@ -1355,7 +1628,7 @@
       return;
     }
     localStorage.setItem("tz_pin_" + currentUser.uid, newPin);
-    if (userProfile) {
+    if (userProfile?.id) {
       try {
         await updateDoc(doc(db, "users", currentUser.uid), { appLockPin: newPin });
       } catch (_) {}
@@ -1437,14 +1710,14 @@
     }
   };
 
-  // Render Broadcast Stream
+  // Render Broadcast Stream (Optional Category & Optional Risk Level + Telegram Reactions)
   function renderBroadcastStream() {
     const listEl = document.getElementById("broadcastList");
     if (!listEl) return;
     const entitled = isEntitled();
     const days = daysRemaining(userProfile);
     document.getElementById("streamSubStatus").textContent = isUserAdmin()
-      ? "Admin Mode • Full Read Receipt & Reply Controls"
+      ? "Owner VIP Mode • Full Read Receipt, Reply & P&L Controls"
       : entitled
         ? `Active Membership (${days} Days Left) • Tap any alert to open`
         : "Subscription Required • Tap Plans or Claim 7-Day Free Trial";
@@ -1487,6 +1760,11 @@
         `;
         card.onclick = () => openBroadcastMessage(msg);
       } else {
+        const showCat = msg.category && msg.category !== "NONE" && msg.title !== msg.content;
+        const showRisk = msg.replyToRiskLevel !== "NONE" && msg.riskLevel && msg.riskLevel !== "NONE";
+        const catHtml = showCat ? `<span class="pill pill-blue">${escapeHtml(msg.category)}</span>` : "";
+        const riskHtml = showRisk ? `<span class="pill pill-amber">${escapeHtml(msg.riskLevel)} RISK</span>` : "";
+
         const replyHtml = msg.replyToTitle ? `
           <div class="quoted-reply">
             <div style="font-weight:800;color:var(--emerald);">↩ Replying to: ${escapeHtml(msg.replyToTitle)}</div>
@@ -1506,9 +1784,10 @@
 
         card.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <div style="display:flex;gap:6px;align-items:center;">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
               ${msg.isPinned ? `<span class="pill pill-amber">📌 PINNED</span>` : ""}
-              <span class="pill pill-blue">${escapeHtml(msg.category || "INTRADAY")}</span>
+              ${catHtml}
+              ${riskHtml}
             </div>
             <span class="card-sub">${new Date(Number(msg.createdAtMillis || Date.now())).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}</span>
           </div>
@@ -1516,6 +1795,7 @@
           <div class="card-title">${escapeHtml(msg.title)}</div>
           <p style="font-size:14px;line-height:1.55;margin-top:6px;white-space:pre-wrap;">${escapeHtml(msg.content)}</p>
           ${imgHtml}
+          ${getReactionsHtml(msg.id)}
           ${adminHtml}
         `;
       }
@@ -1561,7 +1841,7 @@
     document.getElementById("seenByModal").classList.remove("open");
   };
 
-  // Commodity Stream (NO Star Rating, NO Risk Level, Pinned Messages, Phone/ID Auto-Blocking)
+  // Commodity Stream (Owner Today's P&L Banner + Cards, Telegram Reactions, Admin-Only Delete)
   window.selectCommodityTag = function(tag, btn) {
     selectedCommodityTag = tag;
     document.querySelectorAll("#commodityComposerCard .chip").forEach(c => c.classList.remove("selected"));
@@ -1591,7 +1871,6 @@
     const text = document.getElementById("commodityInput").value.trim();
     if (!text) return;
 
-    // Phone / Email / Personal ID Auto-Blocker
     if (!isUserAdmin() && containsPersonalContactInfo(text)) {
       try {
         await addDoc(collection(db, "moderation_alerts"), {
@@ -1637,40 +1916,137 @@
     }
   };
 
+  window.openAdminPnlPrompt = async function() {
+    if (!isUserAdmin()) return;
+    const cur = parsePricingMeta().todayProfit;
+    const amountText = prompt("Enter Today's Profit or Loss (e.g. +₹48,500 or -₹6,200):", cur.amountText || "+₹48,500");
+    if (amountText === null) return;
+    const instrumentText = prompt("Instrument / Segment (e.g. MCX GOLD & SILVER):", cur.instrumentText || "MCX GOLD & SILVER") || "MCX GOLD & SILVER";
+    const roiPercentText = prompt("ROI / Gain % (e.g. +18.4% ROI):", cur.roiPercentText || "+18.4% ROI") || "+18.4% ROI";
+    const noteText = prompt("Trade Summary Note:", cur.noteText || "Intraday targets achieved") || "";
+    const isProfit = !amountText.trim().startsWith("-");
+    const postCard = confirm("Also post an official Trade Result Card into the Commodity feed so members can react with emojis?");
+    try {
+      const updatedBenefits = buildBenefitsWithUpdatedMeta({
+        todayProfit: { enabled: true, isProfit, amountText: amountText.trim(), instrumentText: instrumentText.trim(), roiPercentText: roiPercentText.trim(), noteText: noteText.trim() }
+      });
+      await updateDoc(doc(db, "app_config", "pricing"), { benefits: updatedBenefits, updatedAtMillis: Date.now() });
+      if (postCard) {
+        await addDoc(collection(db, "community_reviews"), {
+          tradeMessageId: "OWNER_PROFIT",
+          tradeMessageTitle: `PROFIT_CARD|${isProfit ? "1" : "0"}|${amountText.trim()}|${instrumentText.trim()}|${roiPercentText.trim()}`,
+          tradeRiskLevel: "",
+          topicTag: "OWNER_PNL",
+          userId: currentUser.uid,
+          userAlias: userProfile?.fullName || "Atharva Garg (Owner)",
+          userRealName: userProfile?.fullName || "Atharva Garg",
+          userEmail: currentUser.email || PRIMARY_ADMIN_EMAIL,
+          userPhotoBase64: "",
+          deviceId,
+          publicOpinionText: noteText.trim() || `${instrumentText.trim()} • ${amountText.trim()} (${roiPercentText.trim()})`,
+          rating: 5,
+          hadProfanityBlurred: false,
+          isPinned: true,
+          pinnedAtMillis: Date.now(),
+          createdAtMillis: Date.now()
+        });
+      }
+      showToast("Today's P&L updated!");
+    } catch (e) {
+      showToast(e?.message || "Failed to update P&L");
+    }
+  };
+
   function renderCommodityStream() {
     const listEl = document.getElementById("commodityList");
     if (!listEl) return;
-    if (communityReviews.length === 0) {
+
+    // Render Pinned Top Owner Today's Profit/Loss Banner
+    const pnlBannerEl = document.getElementById("commodityTodayPnlBanner");
+    if (pnlBannerEl) {
+      const { todayProfit } = parsePricingMeta();
+      if (todayProfit.enabled || isUserAdmin()) {
+        pnlBannerEl.style.display = "block";
+        const isLoss = !todayProfit.isProfit;
+        pnlBannerEl.innerHTML = `
+          <div class="pnl-banner ${isLoss ? "loss" : ""}">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+              <div>
+                <span class="pill ${isLoss ? "pill-crimson" : "pill-emerald"}">${isLoss ? "📉 OWNER TODAY'S LOSS" : "🏆 OWNER TODAY'S PROFIT"}</span>
+                <div style="font-size:24px;font-weight:900;margin-top:6px;color:${isLoss ? "var(--crimson)" : "var(--emerald)"};">
+                  ${escapeHtml(todayProfit.amountText)}
+                  <span class="pill ${isLoss ? "pill-crimson" : "pill-emerald"}" style="vertical-align:middle;margin-left:6px;">${escapeHtml(todayProfit.roiPercentText)}</span>
+                </div>
+                <div style="font-size:13px;font-weight:800;margin-top:4px;">${escapeHtml(todayProfit.instrumentText)}</div>
+                ${todayProfit.noteText ? `<div class="card-sub" style="margin-top:2px;">${escapeHtml(todayProfit.noteText)}</div>` : ""}
+              </div>
+              ${isUserAdmin() ? `<button class="btn btn-outline" onclick="openAdminPnlPrompt()">✏️ Post / Update Today's P&amp;L</button>` : ""}
+            </div>
+            ${getReactionsHtml("TODAY_PROFIT_BANNER")}
+          </div>
+        `;
+      } else {
+        pnlBannerEl.style.display = "none";
+      }
+    }
+
+    const visibleMessages = communityReviews.filter(r => r.topicTag !== "REACTION");
+    if (visibleMessages.length === 0) {
       listEl.innerHTML = `<div class="card"><div class="card-sub">No Commodity messages yet. Start the discussion above!</div></div>`;
       return;
     }
     listEl.innerHTML = "";
-    communityReviews.forEach(rev => {
+    visibleMessages.forEach(rev => {
       const card = document.createElement("div");
+      const isProfitCard = rev.topicTag === "OWNER_PNL" && String(rev.tradeMessageTitle || "").startsWith("PROFIT_CARD|");
       card.className = "card" + (rev.isPinned ? " card-pinned" : "");
+
+      // STRICT RULE: Only Admin can delete messages in Commodity once sent
       const adminBtns = isUserAdmin() ? `
         <div class="btn-row" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
           <button class="btn btn-outline" onclick="togglePinCommodity('${rev.id}', ${!rev.isPinned})">${rev.isPinned ? "Unpin" : "📌 Pin to Top"}</button>
-          <button class="btn btn-crimson" onclick="deleteCommodityMsg('${rev.id}')">Delete</button>
+          <button class="btn btn-crimson" onclick="deleteCommodityMsg('${rev.id}')">🗑️ Admin Delete</button>
         </div>
       ` : "";
-      card.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <div style="display:flex;gap:6px;align-items:center;">
-            ${rev.isPinned ? `<span class="pill pill-amber">📌 Pinned Message</span>` : ""}
-            <span class="pill pill-emerald">${escapeHtml(rev.topicTag || "COMMODITY")}</span>
+
+      if (isProfitCard) {
+        const parts = String(rev.tradeMessageTitle || "").split("|");
+        const isProf = parts[1] !== "0";
+        const amt = parts[2] || "+₹0";
+        const inst = parts[3] || "COMMODITY TRADE";
+        const roi = parts[4] || "";
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span class="pill ${isProf ? "pill-emerald" : "pill-crimson"}">${isProf ? "🏆 OFFICIAL TRADE PROFIT" : "📉 OFFICIAL TRADE P&L"}</span>
+            <span class="card-sub">${new Date(Number(rev.createdAtMillis || Date.now())).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
           </div>
-          <span class="card-sub">${new Date(Number(rev.createdAtMillis || Date.now())).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-        </div>
-        <div style="font-size:13px;font-weight:800;margin-bottom:4px;">${escapeHtml(rev.userAlias || "Member")}</div>
-        <p style="font-size:14px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(rev.publicOpinionText || "")}</p>
-        ${adminBtns}
-      `;
+          <div style="font-size:22px;font-weight:900;color:${isProf ? "var(--emerald)" : "var(--crimson)"};">${escapeHtml(amt)} <span style="font-size:13px;">${escapeHtml(roi)}</span></div>
+          <div style="font-size:14px;font-weight:800;margin-top:4px;">${escapeHtml(inst)}</div>
+          <p style="font-size:13px;line-height:1.5;margin-top:4px;white-space:pre-wrap;">${escapeHtml(rev.publicOpinionText || "")}</p>
+          ${getReactionsHtml(rev.id)}
+          ${adminBtns}
+        `;
+      } else {
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="display:flex;gap:6px;align-items:center;">
+              ${rev.isPinned ? `<span class="pill pill-amber">📌 Pinned Message</span>` : ""}
+              <span class="pill pill-emerald">${escapeHtml(rev.topicTag || "COMMODITY")}</span>
+            </div>
+            <span class="card-sub">${new Date(Number(rev.createdAtMillis || Date.now())).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+          </div>
+          <div style="font-size:13px;font-weight:800;margin-bottom:4px;">${escapeHtml(rev.userAlias || "Member")}</div>
+          <p style="font-size:14px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(rev.publicOpinionText || "")}</p>
+          ${getReactionsHtml(rev.id)}
+          ${adminBtns}
+        `;
+      }
       listEl.appendChild(card);
     });
   }
 
   window.togglePinCommodity = async function(id, pin) {
+    if (!isUserAdmin()) return;
     try {
       await updateDoc(doc(db, "community_reviews", id), {
         isPinned: pin,
@@ -1683,15 +2059,19 @@
   };
 
   window.deleteCommodityMsg = async function(id) {
+    if (!isUserAdmin()) {
+      showToast("Only Admin can delete sent Commodity messages.");
+      return;
+    }
     try {
       await deleteDoc(doc(db, "community_reviews", id));
-      showToast("Commodity message deleted");
+      showToast("Commodity message deleted by Admin");
     } catch (e) {
       showToast(e?.message || "Failed to delete");
     }
   };
 
-  // Plans & Free Trial
+  // Plans & Free Trial + Admin Plan Studio Bypass
   window.requestFreeTrial = async function() {
     if (!currentUser || !userProfile) return;
     try {
@@ -1719,27 +2099,140 @@
 
   window.selectPlanSlot = function(slot) {
     selectedPlanSlot = slot;
-    [1, 2, 3].forEach(s => document.getElementById("planTab" + s)?.classList.toggle("selected", s === slot));
     renderPlansTab();
   };
 
-  function renderPlansTab() {
-    const pName = selectedPlanSlot === 1 ? pricingConfig.planName : selectedPlanSlot === 2 ? pricingConfig.plan2Name : pricingConfig.plan3Name;
-    const pPrice = selectedPlanSlot === 1 ? pricingConfig.priceInr : selectedPlanSlot === 2 ? pricingConfig.plan2PriceInr : pricingConfig.plan3PriceInr;
-    const pDays = selectedPlanSlot === 1 ? pricingConfig.validityDays : selectedPlanSlot === 2 ? pricingConfig.plan2ValidityDays : pricingConfig.plan3ValidityDays;
-    const pQr = selectedPlanSlot === 1 ? pricingConfig.qrCodeBase64 : selectedPlanSlot === 2 ? pricingConfig.plan2QrCodeBase64 : pricingConfig.plan3QrCodeBase64;
+  window.adminTogglePlanSlot = async function(slotId) {
+    if (!isUserAdmin()) return;
+    const meta = parsePricingMeta();
+    try {
+      if (slotId === "plan_1") {
+        const updatedBenefits = buildBenefitsWithUpdatedMeta({ plan1Enabled: !meta.plan1Enabled });
+        await updateDoc(doc(db, "app_config", "pricing"), { benefits: updatedBenefits, updatedAtMillis: Date.now() });
+      } else if (slotId === "plan_2") {
+        await updateDoc(doc(db, "app_config", "pricing"), { plan2Enabled: !pricingConfig.plan2Enabled, updatedAtMillis: Date.now() });
+      } else if (slotId === "plan_3") {
+        await updateDoc(doc(db, "app_config", "pricing"), { plan3Enabled: !pricingConfig.plan3Enabled, updatedAtMillis: Date.now() });
+      } else {
+        const updatedCustom = meta.customPlans.map(p => p.id === slotId ? { ...p, enabled: !p.enabled } : p);
+        const updatedBenefits = buildBenefitsWithUpdatedMeta({ customPlans: updatedCustom });
+        await updateDoc(doc(db, "app_config", "pricing"), { benefits: updatedBenefits, updatedAtMillis: Date.now() });
+      }
+      showToast("Plan visibility updated!");
+    } catch (e) {
+      showToast(e?.message || "Failed to toggle plan");
+    }
+  };
 
-    document.getElementById("selectedPlanTitle").textContent = pName || "Membership Plan";
-    document.getElementById("selectedPlanPrice").textContent = "₹" + Number(pPrice || 2499).toFixed(0);
-    document.getElementById("selectedPlanValidity").textContent = `${pDays || 30} Days Full Broadcast & Commodity Access`;
+  window.adminAddCustomPlanPrompt = async function() {
+    if (!isUserAdmin()) return;
+    const name = prompt("Enter Custom Plan Name:", "6-Month Diamond Desk");
+    if (!name) return;
+    const priceInr = Number(prompt("Enter Plan Price in INR (₹):", "9999") || 9999);
+    const validityDays = Number(prompt("Enter Validity in Days:", "180") || 180);
+    const badgeText = prompt("Enter Plan Badge Text:", "CUSTOM VIP") || "CUSTOM VIP";
+    const meta = parsePricingMeta();
+    const newPlan = {
+      id: "custom_" + Date.now(),
+      name: name.trim(),
+      priceInr,
+      validityDays,
+      enabled: true,
+      qrOnlyMode: false,
+      badgeText: badgeText.trim(),
+      qrCodeBase64: ""
+    };
+    try {
+      const updatedBenefits = buildBenefitsWithUpdatedMeta({ customPlans: [...meta.customPlans, newPlan] });
+      await updateDoc(doc(db, "app_config", "pricing"), { benefits: updatedBenefits, updatedAtMillis: Date.now() });
+      showToast("Custom Plan added & live!");
+    } catch (e) {
+      showToast(e?.message || "Failed to add custom plan");
+    }
+  };
+
+  window.adminDeleteCustomPlan = async function(planId) {
+    if (!isUserAdmin()) return;
+    const meta = parsePricingMeta();
+    try {
+      const updatedBenefits = buildBenefitsWithUpdatedMeta({ customPlans: meta.customPlans.filter(p => p.id !== planId) });
+      await updateDoc(doc(db, "app_config", "pricing"), { benefits: updatedBenefits, updatedAtMillis: Date.now() });
+      showToast("Custom plan deleted!");
+    } catch (e) {
+      showToast(e?.message || "Failed to delete custom plan");
+    }
+  };
+
+  function getAllPlansList() {
+    const meta = parsePricingMeta();
+    return [
+      { id: "plan_1", slot: 1, name: pricingConfig.planName || "Monthly Pro", priceInr: Number(pricingConfig.priceInr || 2499), validityDays: Number(pricingConfig.validityDays || 30), enabled: meta.plan1Enabled, qrCodeBase64: pricingConfig.qrCodeBase64 || "", isCustom: false },
+      { id: "plan_2", slot: 2, name: pricingConfig.plan2Name || "Quarterly Elite", priceInr: Number(pricingConfig.plan2PriceInr || 5999), validityDays: Number(pricingConfig.plan2ValidityDays || 90), enabled: pricingConfig.plan2Enabled !== false, qrCodeBase64: pricingConfig.plan2QrCodeBase64 || "", isCustom: false },
+      { id: "plan_3", slot: 3, name: pricingConfig.plan3Name || "Annual Institutional", priceInr: Number(pricingConfig.plan3PriceInr || 18999), validityDays: Number(pricingConfig.plan3ValidityDays || 365), enabled: pricingConfig.plan3Enabled !== false, qrCodeBase64: pricingConfig.plan3QrCodeBase64 || "", isCustom: false },
+      ...meta.customPlans.map((cp, idx) => ({ ...cp, slot: 4 + idx, isCustom: true }))
+    ];
+  }
+
+  function renderPlansTab() {
+    const adminBox = document.getElementById("adminPlansStudioContainer");
+    const buyerBox = document.getElementById("buyerPlansContainer");
+    const allPlans = getAllPlansList();
+
+    // ADMIN BYPASS: Admin NEVER sees buyer UPI payment checkout screen
+    if (isUserAdmin()) {
+      if (buyerBox) buyerBox.style.display = "none";
+      if (adminBox) {
+        adminBox.style.display = "block";
+        adminBox.innerHTML = `
+          <div class="card" style="border-color:var(--emerald);background:var(--emerald-dim);">
+            <span class="pill pill-emerald">👑 OWNER LIFETIME VIP MASTER ACCESS</span>
+            <div class="card-title" style="margin-top:8px;font-size:18px;">Admin Bypass Active — No Payment Required</div>
+            <p class="card-sub">As the Platform Owner, you never pay for plans. Use the Interactive Plan Studio below to turn plans ON/OFF, add custom plans, or post Today's Profit/Loss.</p>
+            <div class="btn-row" style="margin-top:10px;">
+              <button class="btn btn-primary" onclick="adminAddCustomPlanPrompt()">➕ Add Custom Plan</button>
+              <button class="btn btn-outline" onclick="openAdminPnlPrompt()">🏆 Post Today's P&amp;L</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Interactive Plan Studio (${allPlans.filter(p => p.enabled).length} Active / ${allPlans.length} Total)</div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
+              ${allPlans.map(p => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid ${p.enabled ? "var(--emerald)" : "var(--border)"};border-radius:12px;">
+                  <div>
+                    <div style="font-weight:800;font-size:14px;">${escapeHtml(p.name)} <span class="pill ${p.enabled ? "pill-emerald" : "pill-crimson"}">${p.enabled ? "ACTIVE ON" : "HIDDEN OFF"}</span></div>
+                    <div class="card-sub">₹${p.priceInr} • ${p.validityDays} Days Validity</div>
+                  </div>
+                  <div class="btn-row">
+                    <button class="btn btn-outline" onclick="adminTogglePlanSlot('${p.id}')">${p.enabled ? "Turn OFF" : "Turn ON"}</button>
+                    ${p.isCustom ? `<button class="btn btn-crimson" onclick="adminDeleteCustomPlan('${p.id}')">🗑️</button>` : ""}
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    if (adminBox) adminBox.style.display = "none";
+    if (buyerBox) buyerBox.style.display = "block";
+
+    const activePlans = allPlans.filter(p => p.enabled);
+    const chosen = activePlans.find(p => p.slot === selectedPlanSlot) || activePlans[0] || allPlans[0];
+    if (!chosen) return;
+
+    document.getElementById("selectedPlanTitle").textContent = chosen.name || "Membership Plan";
+    document.getElementById("selectedPlanPrice").textContent = "₹" + Number(chosen.priceInr || 2499).toFixed(0);
+    document.getElementById("selectedPlanValidity").textContent = `${chosen.validityDays || 30} Days Full Broadcast & Commodity Access`;
     document.getElementById("planUpiLabel").textContent = "Official UPI ID: " + (pricingConfig.upiId || "tradingzone@upi");
 
     const qrContainer = document.getElementById("planQrContainer");
-    if (pQr) {
-      qrContainer.innerHTML = `<img src="data:image/jpeg;base64,${pQr}" style="max-width:210px;border-radius:14px;border:4px solid #fff;" alt="UPI QR" />`;
+    if (chosen.qrCodeBase64) {
+      qrContainer.innerHTML = `<img src="data:image/jpeg;base64,${chosen.qrCodeBase64}" style="max-width:210px;border-radius:14px;border:4px solid #fff;" alt="UPI QR" />`;
     } else {
       qrContainer.innerHTML = `<div class="qr-box" id="dynamicUpiQr"></div>`;
-      const upiUri = `upi://pay?pa=${encodeURIComponent(pricingConfig.upiId || "tradingzone@upi")}&pn=TradingZone&am=${Number(pPrice || 2499)}&cu=INR`;
+      const upiUri = `upi://pay?pa=${encodeURIComponent(pricingConfig.upiId || "tradingzone@upi")}&pn=TradingZone&am=${Number(chosen.priceInr || 2499)}&cu=INR`;
       renderQrIntoElement("dynamicUpiQr", upiUri, 5);
     }
 
@@ -1766,9 +2259,9 @@
       showToast("Enter a valid UPI UTR / Reference number");
       return;
     }
-    const pName = selectedPlanSlot === 1 ? pricingConfig.planName : selectedPlanSlot === 2 ? pricingConfig.plan2Name : pricingConfig.plan3Name;
-    const pPrice = selectedPlanSlot === 1 ? pricingConfig.priceInr : selectedPlanSlot === 2 ? pricingConfig.plan2PriceInr : pricingConfig.plan3PriceInr;
-    const pDays = selectedPlanSlot === 1 ? pricingConfig.validityDays : selectedPlanSlot === 2 ? pricingConfig.plan2ValidityDays : pricingConfig.plan3ValidityDays;
+    const activePlans = getAllPlansList().filter(p => p.enabled);
+    const chosen = activePlans.find(p => p.slot === selectedPlanSlot) || activePlans[0];
+    if (!chosen) return;
 
     try {
       await addDoc(collection(db, "access_requests"), {
@@ -1778,9 +2271,9 @@
         userPhone: userProfile?.phoneNumber || "",
         deviceId,
         requestType: "PAID_UPI",
-        planName: pName,
-        amountInr: Number(pPrice || 2499),
-        validityDays: Number(pDays || 30),
+        planName: chosen.name,
+        amountInr: Number(chosen.priceInr || 2499),
+        validityDays: Number(chosen.validityDays || 30),
         utrReference: utr,
         paymentScreenshotBase64: uploadedPhotos.payment || "",
         status: "PENDING",
@@ -1857,10 +2350,10 @@
   };
 
   window.toggleThemeMode = function() {
-    document.body.classList.toggle("light-mode");
+    window.cycleLookTheme();
   };
 
-  // Admin Console Functions
+  // Admin Console Functions (Optional Category & Optional Broadcast Risk Level)
   window.prepareReplyBroadcast = function(msgId) {
     const msg = broadcastMessages.find(m => m.id === msgId);
     if (!msg) return;
@@ -1878,20 +2371,23 @@
   window.adminPublishBroadcast = async function() {
     const title = document.getElementById("adminMsgTitle").value.trim();
     const content = document.getElementById("adminMsgBody").value.trim();
-    const category = document.getElementById("adminMsgCategory").value;
-    const riskLevel = document.getElementById("adminMsgRisk").value;
+    const category = document.getElementById("adminMsgCategory").value || "NONE";
+    const rawRisk = document.getElementById("adminMsgRisk").value || "NONE";
     const isPinned = document.getElementById("adminMsgPinned").checked;
-    if (!title || !content) {
-      showToast("Enter broadcast headline and content");
+    if (!title && !content) {
+      showToast("Enter broadcast headline or content");
       return;
     }
+    const finalTitle = title || content.substring(0, 60);
+    const finalContent = content || title;
+    const firestoreRisk = rawRisk === "NONE" ? "MEDIUM" : rawRisk;
     try {
       const now = Date.now();
       await addDoc(collection(db, "broadcast_messages"), {
-        title,
-        content,
+        title: finalTitle,
+        content: finalContent,
         category,
-        riskLevel,
+        riskLevel: firestoreRisk,
         markedPhotoBase64: uploadedPhotos.adminChart || "",
         linkUrl: "",
         linkTitle: "",
@@ -1902,7 +2398,7 @@
         replyToMessageId: replyingToBroadcast?.id || "",
         replyToTitle: replyingToBroadcast?.title || "",
         replyToSnippet: (replyingToBroadcast?.content || "").substring(0, 90),
-        replyToRiskLevel: replyingToBroadcast?.riskLevel || "",
+        replyToRiskLevel: rawRisk === "NONE" ? "NONE" : (replyingToBroadcast?.riskLevel || rawRisk),
         createdAtMillis: now,
         updatedAtMillis: now
       });
