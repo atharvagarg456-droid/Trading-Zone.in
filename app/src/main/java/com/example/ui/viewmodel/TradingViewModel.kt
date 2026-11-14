@@ -63,7 +63,9 @@ class TradingViewModel(
     )
     val isAppLockSetupComplete: StateFlow<Boolean> = _isAppLockSetupComplete.asStateFlow()
 
-    private val _isSessionUnlocked = MutableStateFlow(false)
+    private val _isSessionUnlocked = MutableStateFlow(
+        securityPreferences.isDeviceTrustedForQuickLogin(currentUserId, deviceId)
+    )
     val isSessionUnlocked: StateFlow<Boolean> = _isSessionUnlocked.asStateFlow()
 
     private val _isBiometricEnabled = MutableStateFlow(
@@ -456,6 +458,7 @@ class TradingViewModel(
         _localSecurityQuestion.value = securityQuestion.trim()
         _isBiometricEnabled.value = enableBiometric
         _isAppLockSetupComplete.value = true
+        securityPreferences.setDeviceTrustedForQuickLogin(currentUserId, deviceId, true)
         _isSessionUnlocked.value = true
         viewModelScope.launch {
             repository.syncAppLockPinInProfile(pin)
@@ -469,16 +472,19 @@ class TradingViewModel(
             (remotePin.isNotBlank() && remotePin == candidatePin.trim())
         if (isMatch) {
             securityPreferences.savePin(currentUserId, candidatePin.trim())
+            securityPreferences.setDeviceTrustedForQuickLogin(currentUserId, deviceId, true)
             _isSessionUnlocked.value = true
         }
         return isMatch
     }
 
     fun unlockViaBiometricSuccess() {
+        securityPreferences.setDeviceTrustedForQuickLogin(currentUserId, deviceId, true)
         _isSessionUnlocked.value = true
     }
 
     fun lockSessionNow() {
+        securityPreferences.setDeviceTrustedForQuickLogin(currentUserId, deviceId, false)
         _isSessionUnlocked.value = false
     }
 
@@ -488,6 +494,7 @@ class TradingViewModel(
             (remoteAnswer.isNotBlank() && remoteAnswer == candidateAnswer.trim().lowercase())
         if (isMatch && newPin.trim().length >= 4) {
             securityPreferences.savePin(currentUserId, newPin.trim())
+            securityPreferences.setDeviceTrustedForQuickLogin(currentUserId, deviceId, true)
             _isSessionUnlocked.value = true
             viewModelScope.launch {
                 repository.syncAppLockPinInProfile(newPin.trim())
@@ -1006,15 +1013,97 @@ class TradingViewModel(
 
     fun setDeviceBanStatus(user: UserProfile, ban: Boolean) {
         viewModelScope.launch {
-            repository.setDeviceBanStatus(user, ban)
+            val userDevices = allDevicesForAdmin.value.filter { it.boundUserId == user.userId }
+            repository.setDeviceBanStatus(user, ban, userDevices)
                 .onSuccess {
+                    if (!ban) {
+                        // Also resolve any open moderation alerts or pending unban appeals for this user
+                        moderationAlertsForAdmin.value
+                            .filter { it.userId == user.userId && it.status != "RESOLVED" }
+                            .forEach { alert ->
+                                repository.resolveModerationAlert(alert.id, "RESOLVED")
+                            }
+                        allAccessRequestsForAdmin.value
+                            .filter { it.userId == user.userId && it.status == "PENDING" && it.isUnbanAppealRequest() }
+                            .forEach { req ->
+                                repository.reviewAccessRequest(req, true)
+                            }
+                    }
                     _statusMessage.value = if (ban) {
-                        "Banned ${user.fullName} and device ${user.deviceId}."
+                        "Suspended ${user.fullName.ifBlank { user.email }} and banned hardware device(s)."
                     } else {
-                        "Unbanned ${user.fullName}."
+                        "Unbanned ${user.fullName.ifBlank { user.email }} & all devices — Second Chance granted!"
                     }
                 }
                 .onFailure { _statusMessage.value = it.localizedMessage ?: "Failed to update ban." }
+        }
+    }
+
+    fun requestCrossDeviceLoginOtp(code4Digit: String) {
+        viewModelScope.launch {
+            repository.submitCrossDeviceLoginOtp(
+                profile = userProfile.value,
+                userEmail = currentUserEmail,
+                deviceId = deviceId,
+                deviceModel = deviceModel,
+                ipAddress = ipAddress,
+                code4Digit = code4Digit,
+                adminEmails = adminSettings.value.adminEmails
+            ).onSuccess {
+                _statusMessage.value = "4-Digit Code sent to your previously logged-in device!"
+            }.onFailure {
+                _statusMessage.value = it.localizedMessage ?: "Could not send 4-digit code; use Security Password fallback."
+            }
+        }
+    }
+
+    fun approveCrossDeviceLoginOtp(request: AccessRequest) {
+        val code = request.extractCrossDeviceLoginOtpCode()
+        viewModelScope.launch {
+            repository.approveCrossDeviceLoginOtp(
+                profile = userProfile.value,
+                userEmail = currentUserEmail,
+                approverDeviceId = deviceId,
+                ipAddress = ipAddress,
+                code4Digit = code,
+                requestId = request.id,
+                adminEmails = adminSettings.value.adminEmails,
+                isAdmin = isUserAdmin.value
+            ).onSuccess {
+                _statusMessage.value = "Approved login on ${request.extractCrossDeviceLoginModel()} (Code: $code)!"
+            }.onFailure {
+                _statusMessage.value = it.localizedMessage ?: "Failed to approve cross-device login."
+            }
+        }
+    }
+
+    fun submitUnbanAppeal(appealReason: String) {
+        val profile = userProfile.value ?: UserProfile(
+            userId = currentUserId,
+            email = currentUserEmail,
+            fullName = currentUserDisplayName.ifBlank { currentUserEmail },
+            deviceId = deviceId,
+            deviceModel = deviceModel,
+            ipAddress = ipAddress
+        )
+        viewModelScope.launch {
+            _isBusy.value = true
+            try {
+                repository.submitUnbanAppealRequest(
+                    profile = profile,
+                    deviceId = deviceId,
+                    deviceModel = deviceModel,
+                    ipAddress = ipAddress,
+                    appealReason = appealReason,
+                    adminEmails = adminSettings.value.adminEmails
+                ).onSuccess {
+                    _statusMessage.value = "Second-chance unban request submitted to Admin!"
+                }.onFailure {
+                    _statusMessage.value = it.localizedMessage ?: "Failed to submit unban appeal."
+                }
+            } finally {
+                _isBusy.value = false
+            }
         }
     }
 

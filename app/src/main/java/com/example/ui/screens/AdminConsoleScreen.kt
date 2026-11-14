@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
@@ -261,7 +262,8 @@ fun AdminConsoleScreen(
                 allUsers = allUsers,
                 onResolveAlert = onResolveAlert,
                 onMuteUser = onSetUserCommodityMuted,
-                onBanUserFromAlert = onBanUserFromAlert
+                onBanUserFromAlert = onBanUserFromAlert,
+                onUnbanUserAndDevice = { user -> onSetDeviceBanStatus(user, false) }
             )
             3 -> AdminUsersInspectorTab(
                 allUsers = allUsers,
@@ -596,65 +598,93 @@ private fun AdminPublishMessageTab(
             }
         }
 
-        Text(
-            "Category (Optional — select None to hide badge)",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        var showAdvancedOptions by remember { mutableStateOf(false) }
+        OutlinedButton(
+            onClick = {
+                SoundAndHapticFeedback.playTap(context)
+                showAdvancedOptions = !showAdvancedOptions
+            },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            listOf(
-                "NONE" to "None (Optional)",
-                "INTRADAY" to "INTRADAY",
-                "SWING" to "SWING",
-                "OPTIONS" to "OPTIONS",
-                "MCX" to "MCX",
-                "COMMODITY" to "COMMODITY"
-            ).forEach { (catKey, catLabel) ->
-                FilterChip(
-                    selected = category == catKey,
-                    onClick = { category = catKey },
-                    label = { Text(catLabel) }
-                )
-            }
+            Icon(
+                imageVector = if (showAdvancedOptions) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = if (showAdvancedOptions) {
+                    "Hide Optional Category, Risk & Pin Settings"
+                } else {
+                    "⚙️ Optional Category, Risk Level & Pin Settings"
+                },
+                fontWeight = FontWeight.SemiBold
+            )
         }
 
-        Text(
-            "Broadcast Risk Level (Optional — select None to hide badge)",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf(
-                "NONE" to "None (Optional)",
-                "LOW" to "LOW",
-                "MEDIUM" to "MEDIUM",
-                "HIGH" to "HIGH"
-            ).forEach { (riskKey, riskLabel) ->
-                FilterChip(
-                    selected = riskLevel == riskKey,
-                    onClick = { riskLevel = riskKey },
-                    label = { Text(riskLabel) }
+        AnimatedVisibility(visible = showAdvancedOptions) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Category (Optional — select None to hide badge)",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
                 )
-            }
-        }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        "NONE" to "None (Optional)",
+                        "INTRADAY" to "INTRADAY",
+                        "SWING" to "SWING",
+                        "OPTIONS" to "OPTIONS",
+                        "MCX" to "MCX",
+                        "COMMODITY" to "COMMODITY"
+                    ).forEach { (catKey, catLabel) ->
+                        FilterChip(
+                            selected = category == catKey,
+                            onClick = { category = catKey },
+                            label = { Text(catLabel) }
+                        )
+                    }
+                }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("Pin Message to Top of Stream", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            Switch(checked = isPinned, onCheckedChange = { isPinned = it })
+                Text(
+                    "Broadcast Risk Level (Optional — select None to hide badge)",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        "NONE" to "None (Optional)",
+                        "LOW" to "LOW",
+                        "MEDIUM" to "MEDIUM",
+                        "HIGH" to "HIGH"
+                    ).forEach { (riskKey, riskLabel) ->
+                        FilterChip(
+                            selected = riskLevel == riskKey,
+                            onClick = { riskLevel = riskKey },
+                            label = { Text(riskLabel) }
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Pin Message to Top of Stream", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Switch(checked = isPinned, onCheckedChange = { isPinned = it })
+                }
+            }
         }
 
         if (chartBitmap != null) {
@@ -799,7 +829,10 @@ private fun AdminApprovalsTab(
     val context = LocalContext.current
     var inspectedScreenshot by remember { mutableStateOf<String?>(null) }
     val adminWebAuthRequests = remember(pendingRequests) {
-        pendingRequests.filter { it.requestType == "ADMIN_WEB_AUTH" }
+        pendingRequests.filter { it.isAdminWebAuthOnly() }
+    }
+    val unbanAppealRequests = remember(pendingRequests) {
+        pendingRequests.filter { it.isUnbanAppealRequest() }
     }
     val paymentAndTrialRequests = remember(pendingRequests) {
         pendingRequests.filter { it.requestType != "ADMIN_WEB_AUTH" }
@@ -811,6 +844,93 @@ private fun AdminApprovalsTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Section 0A: Second-Chance Unban Appeals (Banned by Mistake)
+        if (unbanAppealRequests.isNotEmpty()) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = EmeraldColor.copy(alpha = 0.12f)
+                    ),
+                    border = BorderStroke(1.5.dp, EmeraldColor),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_unban_appeals_card")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "🙏 Second-Chance Unban Appeals (${unbanAppealRequests.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = EmeraldColor
+                        )
+                        Text(
+                            text = "Members or hardware devices banned by mistake requesting a second chance:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        unbanAppealRequests.forEach { appealReq ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, EmeraldColor.copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "${appealReq.userName} (${appealReq.userEmail})",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Device ID: ${appealReq.deviceId} • IP: ${appealReq.ipAddress}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "Appeal Note: \"${appealReq.extractUnbanAppealReason()}\"",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = AmberColor,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = {
+                                                SoundAndHapticFeedback.playSuccess(context)
+                                                onReviewAccessRequest(appealReq, true)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = EmeraldColor,
+                                                contentColor = Color.Black
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("✅ Unban & Give 2nd Chance", fontWeight = FontWeight.Bold)
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                SoundAndHapticFeedback.playAlertOrError(context)
+                                                onReviewAccessRequest(appealReq, false)
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Reject")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Section 0: Admin & Co-Admin Website Login Verification (Main Admin + App Password Required)
         item {
             Card(
@@ -1210,8 +1330,10 @@ private fun AdminModerationAlertsTab(
     allUsers: List<UserProfile>,
     onResolveAlert: (alertId: String, status: String) -> Unit,
     onMuteUser: (user: UserProfile, muted: Boolean) -> Unit,
-    onBanUserFromAlert: (ModerationAlert) -> Unit
+    onBanUserFromAlert: (ModerationAlert) -> Unit,
+    onUnbanUserAndDevice: (UserProfile) -> Unit = {}
 ) {
+    val context = LocalContext.current
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1225,7 +1347,7 @@ private fun AdminModerationAlertsTab(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Includes automatic blocks when a user tries to share a phone number, email, UPI ID, or social handle in Commodity.",
+                text = "Includes automatic blocks when a user tries to share a phone number, email, UPI ID, or social handle in Commodity. If banned by mistake, tap 'Unban & 2nd Chance'.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1234,6 +1356,7 @@ private fun AdminModerationAlertsTab(
         items(alerts, key = { it.id }) { alert ->
             val isResolved = alert.status != "OPEN"
             val matchedUser = allUsers.find { it.userId == alert.userId }
+            val isCurrentlyBanned = alert.status == "BANNED" || matchedUser?.accountStatus == "BANNED"
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(
@@ -1256,18 +1379,18 @@ private fun AdminModerationAlertsTab(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "Triggered Pattern: ${alert.detectedWords} • Device: ${alert.deviceId}",
+                        text = "Triggered Pattern: ${alert.detectedWords} • Device: ${alert.deviceId} • Status: ${alert.status}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = CrimsonColor
+                        color = if (isCurrentlyBanned) AmberColor else CrimsonColor
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (matchedUser != null) {
                             OutlinedButton(
-                                onClick = { onMuteUser(matchedUser, true) },
+                                onClick = { onMuteUser(matchedUser, !matchedUser.isCommodityMuted) },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Block Msg")
+                                Text(if (matchedUser.isCommodityMuted) "Unmute" else "Block Msg")
                             }
                         }
                         if (!isResolved) {
@@ -1278,12 +1401,36 @@ private fun AdminModerationAlertsTab(
                                 Text("Resolve")
                             }
                         }
-                        Button(
-                            onClick = { onBanUserFromAlert(alert) },
-                            colors = ButtonDefaults.buttonColors(containerColor = CrimsonColor),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Ban Device")
+                        if (isCurrentlyBanned) {
+                            Button(
+                                onClick = {
+                                    SoundAndHapticFeedback.playSuccess(context)
+                                    val targetProfile = matchedUser ?: UserProfile(
+                                        userId = alert.userId,
+                                        email = alert.userEmail,
+                                        fullName = alert.userName,
+                                        deviceId = alert.deviceId,
+                                        ipAddress = alert.ipAddress
+                                    )
+                                    onUnbanUserAndDevice(targetProfile)
+                                    onResolveAlert(alert.id, "RESOLVED")
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = EmeraldColor,
+                                    contentColor = Color.Black
+                                ),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("✅ Unban & 2nd Chance", fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Button(
+                                onClick = { onBanUserFromAlert(alert) },
+                                colors = ButtonDefaults.buttonColors(containerColor = CrimsonColor),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Ban Device")
+                            }
                         }
                     }
                 }
@@ -1310,6 +1457,13 @@ private fun AdminUsersInspectorTab(
     var swipeGalleryItems by remember { mutableStateOf<List<SwipeableGalleryItem>>(emptyList()) }
     var swipeInitialIndex by remember { mutableIntStateOf(0) }
 
+    val bannedUsers = remember(allUsers) {
+        allUsers.filter { it.accountStatus == "BANNED" }
+    }
+    val bannedDevices = remember(allDevices) {
+        allDevices.filter { it.isBanned }
+    }
+
     val allUserGalleryItems = remember(allUsers, allDevices) {
         allUsers.map { u ->
             val devCount = allDevices.count { it.boundUserId == u.userId && !it.isBanned }.coerceAtLeast(1)
@@ -1332,6 +1486,130 @@ private fun AdminUsersInspectorTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // Dedicated Banned Users & Hardware Devices Recovery Card ("Give a 2nd Chance")
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (bannedUsers.isNotEmpty() || bannedDevices.isNotEmpty()) {
+                        AmberColor.copy(alpha = 0.12f)
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    }
+                ),
+                border = BorderStroke(
+                    1.5.dp,
+                    if (bannedUsers.isNotEmpty() || bannedDevices.isNotEmpty()) AmberColor else EmeraldColor.copy(alpha = 0.45f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_banned_recovery_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "🛡️ Banned Users & Devices — Give a 2nd Chance (${bannedUsers.size} Users • ${bannedDevices.size} Devices)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (bannedUsers.isNotEmpty() || bannedDevices.isNotEmpty()) AmberColor else EmeraldColor
+                    )
+                    if (bannedUsers.isEmpty() && bannedDevices.isEmpty()) {
+                        Text(
+                            text = "No banned users or blocked hardware devices right now. If anyone is banned by mistake, they will appear here for 1-tap unbanning.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        bannedUsers.forEach { bUser ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, AmberColor.copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${bUser.fullName.ifBlank { bUser.email }} (BANNED)",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = CrimsonColor
+                                        )
+                                        Text(
+                                            text = "${bUser.email} • Device: ${bUser.deviceId}",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                    Button(
+                                        onClick = {
+                                            SoundAndHapticFeedback.playSuccess(context)
+                                            onSetDeviceBanStatus(bUser, false)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = EmeraldColor,
+                                            contentColor = Color.Black
+                                        ),
+                                        modifier = Modifier.testTag("unban_user_button_${bUser.userId}")
+                                    ) {
+                                        Text("✅ Unban & 2nd Chance", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        bannedDevices
+                            .filter { dev -> bannedUsers.none { u -> u.deviceId == dev.deviceId || u.userId == dev.boundUserId } }
+                            .forEach { bDev ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, AmberColor.copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Hardware Device: ${bDev.deviceModel.ifBlank { bDev.deviceId }} (BLOCKED)",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = CrimsonColor
+                                            )
+                                            Text(
+                                                text = "ID: ${bDev.deviceId} • IP: ${bDev.ipAddress}",
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                        Button(
+                                            onClick = {
+                                                SoundAndHapticFeedback.playSuccess(context)
+                                                onToggleSingleDeviceBlocked(bDev.deviceId, false)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = EmeraldColor,
+                                                contentColor = Color.Black
+                                            ),
+                                            modifier = Modifier.testTag("unban_device_button_${bDev.deviceId}")
+                                        ) {
+                                            Text("✅ Unban Device", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                    }
+                }
+            }
+        }
+
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1385,6 +1663,7 @@ private fun AdminUsersInspectorTab(
             }
             val activeDevCount = userDevices.count { !it.isBanned }.coerceAtLeast(1)
             val maxDevLimit = user.maxDevicesLimit(defaultLimit = 2)
+            val isUserOrDeviceBanned = user.accountStatus == "BANNED" || userDevices.any { it.isBanned }
 
             Card(
                 onClick = {
@@ -1450,6 +1729,21 @@ private fun AdminUsersInspectorTab(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
+                    }
+                    if (isUserOrDeviceBanned) {
+                        Button(
+                            onClick = {
+                                SoundAndHapticFeedback.playSuccess(context)
+                                onSetDeviceBanStatus(user, false)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = EmeraldColor,
+                                contentColor = Color.Black
+                            ),
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            Text("Unban", fontWeight = FontWeight.Bold)
+                        }
                     }
                     Icon(Icons.Default.ChevronRight, contentDescription = "Inspect")
                 }

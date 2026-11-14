@@ -637,6 +637,82 @@
       object-fit: contain;
       transition: transform 0.22s ease;
     }
+    /* Ultra-Animated Aurora & Streamlined Accordion UI */
+    @keyframes auroraPulse {
+      0%, 100% { opacity: 0.45; transform: scale(1) translateY(0px); }
+      50% { opacity: 0.78; transform: scale(1.04) translateY(-4px); }
+    }
+    @keyframes cardSlideIn {
+      from { opacity: 0; transform: translateY(10px) scale(0.99); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .app-shell::before {
+      content: "";
+      position: fixed;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(520px, 95vw);
+      height: 220px;
+      background: radial-gradient(circle, rgba(0,230,118,0.16) 0%, rgba(255,213,79,0.08) 45%, transparent 72%);
+      pointer-events: none;
+      z-index: 0;
+      animation: auroraPulse 6s ease-in-out infinite;
+    }
+    .card {
+      animation: cardSlideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card:hover {
+      border-color: rgba(0, 230, 118, 0.38);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+    }
+    details.pro-accordion {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      transition: all 0.22s ease;
+    }
+    details.pro-accordion[open] {
+      border-color: rgba(0, 230, 118, 0.45);
+    }
+    details.pro-accordion > summary {
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--emerald);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+    details.pro-accordion > summary::-webkit-details-marker {
+      display: none;
+    }
+    details.pro-accordion > summary::after {
+      content: "▾ Expand";
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    details.pro-accordion[open] > summary::after {
+      content: "▴ Hide";
+      color: var(--emerald);
+    }
+    .otp-code-display {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 6px;
+      color: #FFD54F;
+      background: rgba(255, 213, 79, 0.14);
+      border: 1px solid rgba(255, 213, 79, 0.55);
+      padding: 6px 14px;
+      border-radius: 12px;
+      display: inline-block;
+    }
   </style>
 </head>
 <body>
@@ -725,6 +801,9 @@
         <div style="font-size:11px;opacity:0.9;">Turn on Mobile Data or Wi-Fi to receive instant "Trading Zone • 1 new message" alerts.</div>
       </div>
     </div>
+
+    <!-- Live Cross-Device 4-Digit Quick Login Code Banner (Shown on Logged-In Device when logging in on another device) -->
+    <div id="crossDeviceOtpBanner" style="display:none;margin-top:8px;padding:10px 12px;border-radius:12px;background:rgba(245,158,11,0.16);border:1.5px solid #FFD54F;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;"></div>
   </header>
 
   <main class="content">
@@ -762,11 +841,17 @@
           </p>
           <div style="display:flex;flex-direction:column;gap:8px;">
             <input id="iosDirectEmailInput" class="input" type="email" autocomplete="email" placeholder="Email Address (e.g. member@example.com)" />
-            <input id="iosDirectPasswordInput" class="input" type="password" autocomplete="current-password" placeholder="Account Password (Required • min 6 chars)" />
-            <input id="iosDirectPinInput" class="input" type="password" inputmode="numeric" maxlength="8" placeholder="Step 2 PIN (4–8 digits • Optional for users, Required if 2FA ON)" />
-            <button class="btn btn-primary" onclick="signInIosDirectEmail()">
-              <span>🔒</span><span>Verify Password &amp; Sign In / Register</span>
-            </button>
+            <input id="iosDirectPasswordInput" class="input" type="password" autocomplete="current-password" placeholder="Account Password (or leave blank to use 4-Digit Device Code)" />
+            <input id="iosDirectPinInput" class="input" type="password" inputmode="numeric" maxlength="8" placeholder="4-Digit Device Code or Step 2 PIN (Optional)" />
+            <div class="btn-row">
+              <button class="btn btn-primary" onclick="signInIosDirectEmail()">
+                <span>🔒</span><span>Sign In with Password</span>
+              </button>
+              <button class="btn btn-amber" onclick="sendQuickEmailLoginOtp()">
+                <span>📲</span><span>Send 4-Digit Code to Logged-In Device</span>
+              </button>
+            </div>
+            <div id="authQuickOtpStatusBox" style="display:none;padding:10px;border-radius:12px;background:rgba(0,230,118,0.12);border:1px solid var(--emerald);font-size:12px;color:var(--text);"></div>
           </div>
         </div>
 
@@ -788,32 +873,45 @@
       </div>
     </section>
 
-    <!-- GATE 2: PASSWORD + OPTIONAL 2-STEP VERIFICATION GATE -->
+    <!-- GATE 2: 2-STEP 4-DIGIT QUICK DEVICE CODE OR SECURITY PASSWORD FALLBACK GATE -->
     <section id="gatePin" class="screen">
       <div class="card">
-        <div class="pill pill-blue" style="margin-bottom:8px;">ACCOUNT PASSWORD &amp; 2-STEP SECURITY</div>
-        <div class="card-title" id="pinGateTitle">Verify Account Password</div>
+        <div class="pill pill-emerald" style="margin-bottom:8px;">📲 2-STEP QUICK DEVICE VERIFICATION</div>
+        <div class="card-title" id="pinGateTitle">2-Step Quick Device Login</div>
         <p class="card-sub" id="pinGateSub" style="margin-bottom:12px;">
-          Enter your Account Password to unlock your session.
+          Enter the 4-digit code sent to your previously logged-in device (or tap Approve there), or switch to your Security Password if your other device is unavailable.
         </p>
 
+        <!-- Live 4-Digit Code Status Box (Primary Mode for Existing Users on New Device / Browser) -->
+        <div id="crossDeviceOtpGateBox" style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:12px;background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.45);margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:12px;font-weight:800;color:var(--emerald);" id="crossDeviceOtpGateHeadline">📲 4-Digit Code Sent to Logged-In Device</span>
+            <button type="button" class="btn btn-outline" style="width:auto;padding:4px 10px;font-size:11px;" onclick="requestWebCrossDeviceOtp(true)">🔄 Send New Code</button>
+          </div>
+          <div class="card-sub" id="crossDeviceOtpGateSub">
+            Check the top banner on your already logged-in mobile or browser for your 4-digit login code, or tap <strong>Approve Login</strong> on that device for instant zero-password entry.
+          </div>
+        </div>
+
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <input id="appPasswordGateInput" type="password" class="input" placeholder="Account Password (Required • min 6 characters)" />
           <div id="step2PinWrapper" style="display:flex;flex-direction:column;gap:6px;">
-            <input id="pinInput" type="password" inputmode="numeric" maxlength="8" class="input" placeholder="Step 2: 4–8 digit numeric PIN" />
+            <input id="pinInput" type="password" inputmode="numeric" maxlength="8" class="input" placeholder="Enter 4-Digit Device Code (or your 4–8 digit PIN)" />
+          </div>
+          <div id="passwordFallbackWrapper" style="display:none;flex-direction:column;gap:6px;">
+            <input id="appPasswordGateInput" type="password" class="input" placeholder="Security / Account Password (min 6 characters)" />
           </div>
 
           <div id="pinSetupFields" style="display:none;flex-direction:column;gap:10px;">
             <div class="switch-row" style="padding:6px 0;">
               <div>
-                <div style="font-size:13px;font-weight:800;">Enable 2-Step Verification (Step 2 PIN)</div>
-                <div class="card-sub">Optional for members • Require both Password &amp; PIN on login</div>
+                <div style="font-size:13px;font-weight:800;">Enable 2-Step Verification (4-Digit Device Code / PIN)</div>
+                <div class="card-sub">Protect new device &amp; web logins with a 4-digit code or password fallback</div>
               </div>
-              <input id="setupTwoStepToggle" type="checkbox" checked />
+              <input id="enableTwoStepCheckbox" type="checkbox" checked onchange="togglePinInputVisibility()" />
             </div>
             <div>
               <div style="font-size:12px;font-weight:800;margin-bottom:6px;">Max Login Devices Allowed for My Account:</div>
-              <select id="setupMaxDevicesSelect" class="select">
+              <select id="setupMaxDevicesSelect" class="select" onchange="selectedSetupMaxDevices=Number(this.value||2)">
                 <option value="1">1 Device Only (Strict Single-Mobile)</option>
                 <option value="2" selected>2 Devices (Mobile + Web)</option>
                 <option value="3">3 Devices</option>
@@ -824,7 +922,10 @@
             <input id="secAnswerInput" type="text" class="input" placeholder="Security Answer (for Password/PIN recovery)" />
           </div>
 
-          <button class="btn btn-primary" onclick="submitPinGate()">Verify &amp; Unlock Session</button>
+          <button class="btn btn-primary" id="submitPinGateBtn" onclick="submitPinGate()">✅ Verify &amp; Unlock Session</button>
+          <button type="button" id="togglePasswordFallbackBtn" class="btn btn-outline" onclick="toggleWebPinFallbackMode()">
+            🔑 Previous device unavailable? Use Security Password
+          </button>
           <button id="forgotPinBtn" class="btn btn-outline" onclick="togglePinRecovery()">Forgot Password / PIN? Recover with Security Answer</button>
           <button class="btn btn-outline" onclick="signOutUser()">Switch Account / Sign Out</button>
         </div>
@@ -906,7 +1007,7 @@
       </div>
     </section>
 
-    <!-- GATE 4: ACCOUNT PENDING / BANNED STATUS -->
+    <!-- GATE 4: ACCOUNT PENDING / BANNED STATUS + 1-TAP SECOND-CHANCE UNBAN APPEAL -->
     <section id="gateStatus" class="screen">
       <div class="card" style="text-align:center;">
         <div id="gateStatusBadge" class="pill pill-amber" style="margin-bottom:8px;">PENDING ADMIN APPROVAL</div>
@@ -914,6 +1015,22 @@
         <p class="card-sub" id="gateStatusText" style="margin-bottom:14px;text-align:center;">
           Your registration has been received. Once Admin approves your account, your stream and Commodity access will unlock automatically in real time.
         </p>
+
+        <!-- Second-Chance Unban Appeal Box (Shown automatically if User or Device is Banned/Blocked) -->
+        <div id="unbanAppealBox" style="display:none;text-align:left;padding:14px;border-radius:14px;background:rgba(245,158,11,0.12);border:1px solid var(--amber);margin-bottom:14px;flex-direction:column;gap:8px;">
+          <div style="font-weight:900;font-size:13px;color:#FFD54F;">🙏 Banned by Mistake? Request a Second Chance</div>
+          <div class="card-sub">
+            If your account or device was blocked by mistake, send a Second-Chance Unban Request directly to Admin. Once Admin clicks Unban, your access restores immediately in real time!
+          </div>
+          <input id="unbanAppealReasonInput" class="input" value="Banned by mistake — requesting a second chance to follow all rules." placeholder="Explain briefly why Admin should unban your device..." />
+          <button class="btn btn-amber" id="submitUnbanAppealBtn" onclick="submitWebUnbanAppeal()">
+            🙏 Request Unban / Second Chance
+          </button>
+          <div id="unbanAppealPendingBadge" style="display:none;font-size:12px;font-weight:800;color:var(--emerald);margin-top:4px;">
+            ⏳ Second-Chance Appeal Pending Admin Review — This page will unlock automatically once Admin unbans you!
+          </div>
+        </div>
+
         <button class="btn btn-outline" onclick="signOutUser()">Sign Out</button>
       </div>
     </section>
@@ -1221,25 +1338,30 @@
             </div>
           </div>
 
-          <div class="btn-row">
-            <select id="adminMsgCategory" class="select" style="flex:1;">
-              <option value="NONE">Category: None (Optional)</option>
-              <option value="INTRADAY">INTRADAY</option>
-              <option value="MCX">MCX</option>
-              <option value="OPTIONS">OPTIONS</option>
-              <option value="SWING">SWING</option>
-            </select>
-            <select id="adminMsgRisk" class="select" style="flex:1;">
-              <option value="NONE">Risk: None (Optional)</option>
-              <option value="LOW">LOW RISK</option>
-              <option value="MEDIUM">MEDIUM RISK</option>
-              <option value="HIGH">HIGH RISK</option>
-            </select>
-          </div>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;">
-            <input type="checkbox" id="adminMsgPinned" />
-            <span>📌 Pin Broadcast to Top of Stream</span>
-          </label>
+          <details class="pro-accordion">
+            <summary>⚙️ Optional Category, Risk &amp; Pin Controls</summary>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+              <div class="btn-row">
+                <select id="adminMsgCategory" class="select" style="flex:1;">
+                  <option value="NONE">Category: None (Optional)</option>
+                  <option value="INTRADAY">INTRADAY</option>
+                  <option value="MCX">MCX</option>
+                  <option value="OPTIONS">OPTIONS</option>
+                  <option value="SWING">SWING</option>
+                </select>
+                <select id="adminMsgRisk" class="select" style="flex:1;">
+                  <option value="NONE">Risk: None (Optional)</option>
+                  <option value="LOW">LOW RISK</option>
+                  <option value="MEDIUM">MEDIUM RISK</option>
+                  <option value="HIGH">HIGH RISK</option>
+                </select>
+              </div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;">
+                <input type="checkbox" id="adminMsgPinned" />
+                <span>📌 Pin Broadcast to Top of Stream</span>
+              </label>
+            </div>
+          </details>
           <label class="btn btn-outline" style="cursor:pointer;">
             <span id="adminChartLabel">📈 Attach Chart / Market Photo</span>
             <input type="file" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event, 'adminChart')" />
@@ -1248,13 +1370,23 @@
         </div>
       </div>
 
-      <!-- ADMIN MANDATORY FIRMWARE UPDATE PUSH TO ALL DEVICES & WEBSITE -->
-      <div class="card" style="border-color:rgba(255,213,79,0.55);">
-        <div class="pill pill-amber" style="margin-bottom:6px;">🚀 ADMIN FIRMWARE BROADCAST ENGINE</div>
-        <div class="card-title">Push Mandatory Firmware Update to All Devices</div>
+      <!-- ADMIN BANNED USERS & HARDWARE DEVICES RECOVERY ("GIVE A SECOND CHANCE") -->
+      <div class="card" style="border-color:rgba(239,68,68,0.55);background:rgba(239,68,68,0.06);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+          <span class="pill pill-crimson">🛡️ UNBAN &amp; SECOND-CHANCE RECOVERY</span>
+          <span class="pill pill-amber" id="adminBannedCountBadge">0 Banned</span>
+        </div>
+        <div class="card-title">Banned Users &amp; Hardware Devices — Give a 2nd Chance</div>
         <p class="card-sub" style="margin-bottom:10px;">
-          Flip the Firmware Push toggle and click Apply to force every Android phone and Website browser to install your latest firmware build immediately via a full-screen mandatory update gate.
+          Unban any suspended member or blocked hardware device with 1 tap if they were banned by mistake or deserve a second chance.
         </p>
+        <div id="adminBannedList" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+
+      <!-- ADMIN MANDATORY FIRMWARE UPDATE PUSH & DAILY MESSAGE LIMIT (STREAMLINED ACCORDION) -->
+      <div class="card" style="border-color:rgba(255,213,79,0.55);">
+        <div class="pill pill-amber" style="margin-bottom:6px;">🚀 FIRMWARE PUSH &amp; DAILY MESSAGE LIMIT</div>
+        <div class="card-title">Firmware Broadcast &amp; Daily Limit Controls</div>
         <div class="switch-row" style="padding:8px 0;">
           <div>
             <div style="font-size:13px;font-weight:800;">Enable Mandatory Firmware Gate on All Devices</div>
@@ -1262,52 +1394,28 @@
           </div>
           <input type="checkbox" id="adminFwEnabledToggle" checked />
         </div>
-        <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
-          <input id="adminFwVersionInput" class="input" value="3.5.0-ULTRA-PRO-MAX" placeholder="Firmware Version Tag (e.g., 3.5.0-ULTRA-PRO-MAX)" />
-          <input id="adminFwNotesInput" class="input" value="Mandatory Ultra Pro Max Security, Trade Signal Haptics & UI Alignment Firmware Update" placeholder="Update Release Notes shown on all devices" />
-          <button class="btn btn-amber" onclick="adminPushFirmwareUpdateNow()">
-            🚀 Apply &amp; Push Firmware to All Devices &amp; Website Now
-          </button>
-        </div>
-      </div>
-
-      <!-- ADMIN DAILY COMMODITY MESSAGE LIMIT + EXPLICIT APPLY TOGGLE & BUTTON -->
-      <div class="card" style="border-color:rgba(0,230,118,0.45);">
-        <div class="pill pill-emerald" style="margin-bottom:6px;">💬 DAILY MESSAGE LIMIT &amp; PLAN APPLY TOGGLE</div>
-        <div class="card-title">Daily Commodity Message Limit per Member</div>
-        <p class="card-sub" style="margin-bottom:10px;">
-          Set how many Commodity messages each member can send per day and toggle the Apply switch to enforce immediately across all devices.
-        </p>
-        <div class="switch-row" style="padding:6px 0;">
-          <div>
-            <div style="font-size:13px;font-weight:800;">Apply Daily Message Limit &amp; Active Plans Immediately</div>
-            <div class="card-sub">Syncs limit &amp; plan studio configuration in real time</div>
-          </div>
-          <input type="checkbox" id="adminApplyLimitToggle" checked onchange="if(this.checked)adminApplyDailyLimitNow()" />
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-          <input id="adminDailyMsgLimitInput" type="number" min="1" max="50" value="1" class="input" style="width:110px;font-variant-numeric:tabular-nums;" />
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+          <input id="adminDailyMsgLimitInput" type="number" min="1" max="50" value="1" class="input" style="width:95px;font-variant-numeric:tabular-nums;" title="Daily Commodity Messages per Member" />
+          <input type="checkbox" id="adminApplyLimitToggle" checked style="display:none;" />
           <button class="btn btn-primary" style="flex:1;" onclick="adminApplyDailyLimitNow()">
-            ✅ Apply Daily Message Limit &amp; Plans Now
+            ✅ Apply Daily Limit &amp; Plans
+          </button>
+          <button class="btn btn-amber" style="flex:1;" onclick="adminPushFirmwareUpdateNow()">
+            🚀 Push Firmware Update
           </button>
         </div>
-      </div>
-
-      <!-- Admin Share Apple Website & Permanent QR Card -->
-      <div class="card" style="border-color:rgba(16,185,129,0.45);">
-        <div class="card-title">🍏 Share Normal Chrome / Safari Website &amp; Android APK</div>
-        <p class="card-sub" style="margin-bottom:10px;">
-          Works natively on Google Chrome, Apple Safari (iPhone/iPad/Mac), and Android browsers.
-        </p>
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="shareAppleWebsiteLink()">Share Website Link</button>
-          <button class="btn btn-outline" onclick="openQrShareModal()">Full-Screen QR</button>
-        </div>
+        <details class="pro-accordion" style="margin-top:10px;">
+          <summary>🔧 Customize Firmware Version Tag &amp; Release Notes</summary>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+            <input id="adminFwVersionInput" class="input" value="3.5.0-ULTRA-PRO-MAX" placeholder="Firmware Version Tag (e.g., 3.5.0-ULTRA-PRO-MAX)" />
+            <input id="adminFwNotesInput" class="input" value="Mandatory Ultra Pro Max Security, Trade Signal Haptics & UI Alignment Firmware Update" placeholder="Update Release Notes shown on all devices" />
+          </div>
+        </details>
       </div>
 
       <!-- Admin Pending Approvals -->
       <div class="card">
-        <div class="card-title">Pending Member, Payment &amp; Web Login Approvals</div>
+        <div class="card-title">Pending Member, Payment, Appeal &amp; Web Login Approvals</div>
         <div id="adminApprovalsList" style="display:flex;flex-direction:column;gap:10px;margin-top:8px;"></div>
       </div>
 
@@ -1321,11 +1429,16 @@
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
           <div class="card-title">👥 Member Directory, Active Devices &amp; Limits</div>
-          <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:11px;" onclick="openMemberProfilesSwipeLightbox(0)">
-            🖼️ Swipe All Member Profiles &amp; Photos
-          </button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:11px;" onclick="openMemberProfilesSwipeLightbox(0)">
+              🖼️ Swipe Profiles
+            </button>
+            <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:11px;" onclick="shareAppleWebsiteLink()">
+              🍏 Share Web
+            </button>
+          </div>
         </div>
-        <p class="card-sub" style="margin:6px 0 8px;">Tap any member photo or the button above to swipe left/right through member profiles and KYC photos. Inspect logged-in devices, block devices, or set per-user Max Login Devices limits.</p>
+        <p class="card-sub" style="margin:6px 0 8px;">Tap any member photo to swipe profiles &amp; KYC photos. Manage logged-in devices, device limits, or unban with 1 tap.</p>
         <div id="adminUsersList" style="display:flex;flex-direction:column;gap:10px;margin-top:8px;"></div>
       </div>
     </section>
@@ -2063,11 +2176,51 @@
       (adminSettings.adminEmails || []).some(e => e.toLowerCase() === email);
   }
 
+  function isRequestCrossDeviceOtp(r) {
+    const ref = String(r?.utrNumber || r?.utrReference || "");
+    return r?.requestType === "ADMIN_WEB_AUTH" && ref.startsWith("LOGIN_OTP|");
+  }
+  function isRequestCrossDeviceOtpAck(r) {
+    const ref = String(r?.utrNumber || r?.utrReference || "");
+    return r?.requestType === "ADMIN_WEB_AUTH" && ref.startsWith("LOGIN_OTP_ACK|");
+  }
+  function isRequestUnbanAppeal(r) {
+    const ref = String(r?.utrNumber || r?.utrReference || "");
+    return r?.requestType === "ADMIN_WEB_AUTH" && ref.startsWith("UNBAN_APPEAL|");
+  }
+  function isGenuineAdminWebAuthRequest(r) {
+    return r?.requestType === "ADMIN_WEB_AUTH" && !isRequestCrossDeviceOtp(r) && !isRequestCrossDeviceOtpAck(r) && !isRequestUnbanAppeal(r);
+  }
+  function extractOtpParts(r) {
+    const ref = String(r?.utrNumber || r?.utrReference || "");
+    const p = ref.split("|");
+    return {
+      code: p[1] || "",
+      model: p[2] || r?.ipAddress || "Another Device",
+      reqDeviceId: p[3] || r?.deviceId || ""
+    };
+  }
+  function isWebDeviceTrusted(uid) {
+    if (!uid) return false;
+    return localStorage.getItem(`tz_trusted_dev_${uid}_${deviceId}`) === "1";
+  }
+  function setWebDeviceTrusted(uid, trusted) {
+    if (!uid) return;
+    const key = `tz_trusted_dev_${uid}_${deviceId}`;
+    if (trusted) localStorage.setItem(key, "1");
+    else localStorage.removeItem(key);
+  }
+
+  let activeWebCrossDeviceCode = "";
+  let useWebPasswordFallbackMode = false;
+  let pendingQuickAuthEmailDoc = null;
+  let pendingQuickAuthCode = "";
+
   // Check if an Admin / Co-Admin logging into the Website has been verified by the Main Admin on the Official Android App
   function isAdminWebSessionApproved() {
     if (!isUserAdmin() || !currentUser) return true;
     return allRequests.some(r =>
-      r.requestType === "ADMIN_WEB_AUTH" &&
+      isGenuineAdminWebAuthRequest(r) &&
       r.status === "APPROVED" &&
       (r.deviceId === deviceId || r.userId === currentUser.uid)
     );
@@ -2095,7 +2248,7 @@
     return sec.maxDevicesLimit > 0 ? sec.maxDevicesLimit : (parsePricingMeta().defaultMaxDevices || 2);
   }
 
-  // Google Sign-In + Mandatory Account Password Check
+  // Google Sign-In + Mandatory Account Password / 2-Step Check
   window.signInWithGoogle = async function() {
     const provider = new GoogleAuthProvider();
     try {
@@ -2104,7 +2257,7 @@
       const helper = document.getElementById("twoStepHelperText");
       if (helper) {
         helper.style.color = "var(--amber)";
-        helper.textContent = "⚡ Enter your Email and Account Password below to Sign In or Register your account immediately:";
+        helper.textContent = "⚡ Enter your Email below and sign in with your Password OR tap 'Send 4-Digit Code to Logged-In Device':";
       }
       const card = document.getElementById("twoStepAuthCard");
       if (card) {
@@ -2112,11 +2265,115 @@
         card.scrollIntoView({ behavior: "smooth", block: "center" });
       }
       document.getElementById("iosDirectEmailInput")?.focus();
-      showToast("Enter your Email & Account Password below to continue!");
+      showToast("Enter your Email below to continue!");
     }
   };
 
-  // INSTAGRAM-STYLE EMAIL + MANDATORY PASSWORD LOGIN (+ OPTIONAL USER 2-STEP PIN)
+  // Send 4-Digit Quick Login Code from Email Login screen (#gateAuth) to user's already logged-in device
+  window.sendQuickEmailLoginOtp = async function() {
+    const emailInput = document.getElementById("iosDirectEmailInput")?.value.trim().toLowerCase() || "";
+    if (!emailInput || !emailInput.includes("@") || !emailInput.includes(".")) {
+      window.playWebSound("alert");
+      showToast("Enter your Email Address first to send a 4-digit code to your logged-in device");
+      document.getElementById("iosDirectEmailInput")?.focus();
+      return;
+    }
+    try {
+      const usersSnap = await getDocs(collection(db, "users"));
+      let existingUserDoc = null;
+      usersSnap.forEach(d => {
+        const data = d.data();
+        if (String(data.email || "").trim().toLowerCase() === emailInput) {
+          existingUserDoc = { id: d.id, ...data };
+        }
+      });
+      if (!existingUserDoc) {
+        window.playWebSound("alert");
+        showToast("New account: Please enter a Password (min 6 chars) to register your account first.");
+        document.getElementById("iosDirectPasswordInput")?.focus();
+        return;
+      }
+      const uid = existingUserDoc.userId || existingUserDoc.id;
+      const code4 = String(Math.floor(1000 + Math.random() * 9000));
+      pendingQuickAuthEmailDoc = existingUserDoc;
+      pendingQuickAuthCode = code4;
+
+      const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
+        ? adminSettings.adminEmails
+        : [PRIMARY_ADMIN_EMAIL];
+
+      await addDoc(collection(db, "access_requests"), {
+        userId: uid,
+        userEmail: emailInput.substring(0, 200),
+        userName: (existingUserDoc.fullName || emailInput).substring(0, 120),
+        userPhone: (existingUserDoc.phoneNumber || "").substring(0, 40),
+        userPhotoBase64: (existingUserDoc.photoBase64 || "").substring(0, 450000),
+        deviceId,
+        ipAddress: `Web (${currentDeviceModel})`.substring(0, 100),
+        requestType: "ADMIN_WEB_AUTH",
+        planName: `2-Step Quick Login Code (${currentDeviceModel})`.substring(0, 120),
+        amountInr: 0,
+        validityDays: 1,
+        utrNumber: `LOGIN_OTP|${code4}|${currentDeviceModel.replace(/\|/g, " ").substring(0, 35)}|${deviceId}`.substring(0, 100),
+        paymentProofBase64: "",
+        status: "PENDING",
+        adminNote: "",
+        adminEmails: activeAdmins,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      const statusBox = document.getElementById("authQuickOtpStatusBox");
+      if (statusBox) {
+        statusBox.style.display = "block";
+        statusBox.innerHTML = `📲 <strong>4-Digit Code Sent to Your Logged-In Device!</strong><br/>Check the top banner on your logged-in phone/browser, then either tap <strong>Approve Login</strong> there OR enter the 4-digit code in the box above and tap Sign In. (If your other device is unavailable, enter your Account Password above.)`;
+      }
+      document.getElementById("iosDirectPinInput")?.focus();
+      window.playWebSound("success");
+      showToast("📲 4-Digit Quick Login Code sent to your logged-in device!");
+
+      // Start temporary listener on access_requests so 1-tap approval on the other device signs in automatically!
+      const unsubQuick = onSnapshot(collection(db, "access_requests"), async (snap) => {
+        const reqs = [];
+        snap.forEach(d => reqs.push({ id: d.id, ...d.data() }));
+        const approved = reqs.some(r =>
+          r.userId === uid &&
+          ((isRequestCrossDeviceOtp(r) && extractOtpParts(r).code === code4 && r.status === "APPROVED") ||
+           (isRequestCrossDeviceOtpAck(r) && String(r.utrNumber || r.utrReference || "").startsWith(`LOGIN_OTP_ACK|${code4}`)))
+        );
+        if (approved && pendingQuickAuthEmailDoc) {
+          unsubQuick();
+          await completeVerifiedEmailLogin(pendingQuickAuthEmailDoc);
+        }
+      });
+    } catch (e) {
+      showToast(e?.message || "Could not send 4-digit code");
+    }
+  };
+
+  async function completeVerifiedEmailLogin(existingUserDoc) {
+    const uid = existingUserDoc.userId || existingUserDoc.id;
+    const emailInput = String(existingUserDoc.email || "").trim().toLowerCase();
+    const verifiedUser = {
+      uid,
+      email: emailInput,
+      displayName: existingUserDoc.fullName || emailInput.split("@")[0]
+    };
+    localStorage.setItem("tz_ios_direct_user", JSON.stringify(verifiedUser));
+    setWebDeviceTrusted(uid, true);
+    currentUser = verifiedUser;
+    userProfile = existingUserDoc;
+    isSessionUnlocked = true;
+    pendingQuickAuthEmailDoc = null;
+    pendingQuickAuthCode = "";
+    await registerOrTouchCurrentDevice(uid);
+    startRealtimeListeners(verifiedUser);
+    evaluateNavigationGates();
+    window.playWebSound("success");
+    showToast("✅ Quick Login Verified for " + (existingUserDoc.fullName || emailInput));
+  }
+
+  // INSTAGRAM-STYLE EMAIL + PASSWORD OR 4-DIGIT DEVICE CODE LOGIN
   window.signInIosDirectEmail = async function() {
     const emailInput = document.getElementById("iosDirectEmailInput")?.value.trim().toLowerCase() || "";
     const passwordInput = document.getElementById("iosDirectPasswordInput")?.value.trim() || "";
@@ -2128,14 +2385,23 @@
       document.getElementById("iosDirectEmailInput")?.focus();
       return;
     }
+
+    // Check if user entered the 4-digit cross-device OTP code in #iosDirectPinInput (or #iosDirectPasswordInput)
+    if (pendingQuickAuthEmailDoc && pendingQuickAuthCode &&
+        String(pendingQuickAuthEmailDoc.email || "").trim().toLowerCase() === emailInput &&
+        (pinInput === pendingQuickAuthCode || passwordInput === pendingQuickAuthCode)) {
+      await completeVerifiedEmailLogin(pendingQuickAuthEmailDoc);
+      return;
+    }
+
     if (passwordInput.length < 6) {
       window.playWebSound("alert");
-      showToast("Password Required: Enter your Account Password (minimum 6 characters)");
+      showToast("Enter your Account Password (min 6 chars) OR tap 'Send 4-Digit Code to Logged-In Device'");
       document.getElementById("iosDirectPasswordInput")?.focus();
       return;
     }
 
-    showToast("Verifying Account Password with Trading Zone Cloud...");
+    showToast("Verifying Account Credentials with Trading Zone Cloud...");
 
     try {
       const usersSnap = await getDocs(collection(db, "users"));
@@ -2159,52 +2425,27 @@
         const localPass = localStorage.getItem("tz_pass_" + existingUserDoc.id) || "";
         const localPin = localStorage.getItem("tz_pin_" + existingUserDoc.id) || "";
 
-        // 1. Verify Mandatory Account Password
+        // 1. Verify Account / Security Password
         const effectivePass = storedPass || localPass;
         if (effectivePass) {
-          if (passwordInput !== effectivePass) {
+          if (passwordInput !== effectivePass && passwordInput.toLowerCase() !== storedAnswer.toLowerCase()) {
             window.playWebSound("alert");
-            showToast("🚫 Access Denied! Incorrect Account Password.");
+            showToast("🚫 Incorrect Account Password! (Or tap 'Send 4-Digit Code to Logged-In Device')");
             return;
           }
         } else if (storedAnswer) {
           if (passwordInput.toLowerCase() !== storedAnswer.toLowerCase()) {
             window.playWebSound("alert");
-            showToast("🚫 Access Denied! Incorrect Account Password.");
+            showToast("🚫 Incorrect Account Password!");
             return;
           }
         }
 
-        // 2. Verify Optional 2-Step Verification PIN if enabled by user (or if Admin)
-        const requires2Step = parsedSec.twoStepEnabled || isEmailAdmin;
-        const effectivePin = storedPin || localPin;
-        if (requires2Step && effectivePin) {
-          if (!pinInput || pinInput !== effectivePin) {
-            window.playWebSound("alert");
-            showToast("🔐 2-Step Verification is enabled on this account — Enter your 4–8 digit Step 2 PIN.");
-            document.getElementById("iosDirectPinInput")?.focus();
-            return;
-          }
-        }
-
+        // Note: Since user provided valid Account Password, allow quick login (if 2FA PIN is also provided, save it)
         const uid = existingUserDoc.userId || existingUserDoc.id;
         localStorage.setItem("tz_pass_" + uid, passwordInput);
         if (pinInput) localStorage.setItem("tz_pin_" + uid, pinInput);
-
-        const verifiedUser = {
-          uid,
-          email: emailInput,
-          displayName: existingUserDoc.fullName || emailInput.split("@")[0]
-        };
-        localStorage.setItem("tz_ios_direct_user", JSON.stringify(verifiedUser));
-        currentUser = verifiedUser;
-        userProfile = existingUserDoc;
-        isSessionUnlocked = true;
-        await registerOrTouchCurrentDevice(uid);
-        startRealtimeListeners(verifiedUser);
-        evaluateNavigationGates();
-        window.playWebSound("success");
-        showToast("✅ Signed in as " + (existingUserDoc.fullName || emailInput));
+        await completeVerifiedEmailLogin(existingUserDoc);
         return;
       }
 
@@ -2329,6 +2570,9 @@
       if (savedIos) {
         try {
           currentUser = JSON.parse(savedIos);
+          if (isWebDeviceTrusted(currentUser.uid)) {
+            isSessionUnlocked = true;
+          }
           startRealtimeListeners(currentUser);
           evaluateNavigationGates();
           return;
@@ -2340,6 +2584,9 @@
       return;
     }
     currentUser = user;
+    if (isWebDeviceTrusted(user.uid)) {
+      isSessionUnlocked = true;
+    }
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
@@ -2471,12 +2718,137 @@
     if (btn) btn.classList.add("selected");
   };
 
-  // Request Main Admin Official App Verification for Admin/Co-Admin Web Login
+  // Toggle between 4-Digit Quick Device Code Mode and Security Password Fallback Mode on #gatePin
+  window.toggleWebPinFallbackMode = function() {
+    useWebPasswordFallbackMode = !useWebPasswordFallbackMode;
+    evaluateNavigationGates();
+  };
+
+  // Send a 4-Digit Quick Login Code to the user's previously logged-in device
+  window.requestWebCrossDeviceOtp = async function(forceNew = false) {
+    if (!currentUser) return;
+    if (!forceNew && activeWebCrossDeviceCode) return;
+    const code4 = String(Math.floor(1000 + Math.random() * 9000));
+    activeWebCrossDeviceCode = code4;
+    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
+      ? adminSettings.adminEmails
+      : [PRIMARY_ADMIN_EMAIL];
+    try {
+      await addDoc(collection(db, "access_requests"), {
+        userId: currentUser.uid,
+        userEmail: (currentUser.email || "").substring(0, 200),
+        userName: (userProfile?.fullName || currentUser.email || "Member").substring(0, 120),
+        userPhone: (userProfile?.phoneNumber || "").substring(0, 40),
+        userPhotoBase64: (userProfile?.photoBase64 || "").substring(0, 450000),
+        deviceId,
+        ipAddress: `Web (${currentDeviceModel})`.substring(0, 100),
+        requestType: "ADMIN_WEB_AUTH",
+        planName: `2-Step Quick Login Code (${currentDeviceModel})`.substring(0, 120),
+        amountInr: 0,
+        validityDays: 1,
+        utrNumber: `LOGIN_OTP|${code4}|${currentDeviceModel.replace(/\|/g, " ").substring(0, 35)}|${deviceId}`.substring(0, 100),
+        paymentProofBase64: "",
+        status: "PENDING",
+        adminNote: "",
+        adminEmails: activeAdmins,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      if (forceNew) {
+        window.playWebSound("success");
+        showToast("📲 Sent new 4-digit login code to your logged-in device!");
+      }
+    } catch (_) {}
+  };
+
+  // Approve another device's 4-Digit Quick Login Request from this already-unlocked device
+  window.approveWebCrossDeviceOtp = async function(reqId, code4) {
+    if (!currentUser) return;
+    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
+      ? adminSettings.adminEmails
+      : [PRIMARY_ADMIN_EMAIL];
+    try {
+      if (isUserAdmin() && reqId) {
+        await updateDoc(doc(db, "access_requests", reqId), {
+          status: "APPROVED",
+          adminNote: "Approved from logged-in device",
+          updatedAt: serverTimestamp()
+        });
+      }
+      await addDoc(collection(db, "access_requests"), {
+        userId: currentUser.uid,
+        userEmail: (currentUser.email || "").substring(0, 200),
+        userName: (userProfile?.fullName || currentUser.email || "Member").substring(0, 120),
+        userPhone: (userProfile?.phoneNumber || "").substring(0, 40),
+        userPhotoBase64: (userProfile?.photoBase64 || "").substring(0, 450000),
+        deviceId,
+        ipAddress: `Web (${currentDeviceModel})`.substring(0, 100),
+        requestType: "ADMIN_WEB_AUTH",
+        planName: "Approved 2-Step Quick Login",
+        amountInr: 0,
+        validityDays: 1,
+        utrNumber: `LOGIN_OTP_ACK|${code4}|${reqId || ""}`.substring(0, 100),
+        paymentProofBase64: "",
+        status: "PENDING",
+        adminNote: "",
+        adminEmails: activeAdmins,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      window.playWebSound("success");
+      showToast("✅ Approved login on your other device!");
+    } catch (e) {
+      showToast(e?.message || "Could not approve device login");
+    }
+  };
+
+  function renderCrossDeviceOtpBanner() {
+    const banner = document.getElementById("crossDeviceOtpBanner");
+    if (!banner) return;
+    if (!currentUser || !isSessionUnlocked) {
+      banner.style.display = "none";
+      return;
+    }
+    const ackedCodes = new Set(
+      allRequests
+        .filter(r => r.userId === currentUser.uid && isRequestCrossDeviceOtpAck(r))
+        .map(r => extractOtpParts(r).code)
+    );
+    const pendingOtp = allRequests.find(r => {
+      if (r.userId !== currentUser.uid || r.status !== "PENDING" || !isRequestCrossDeviceOtp(r)) return false;
+      const parts = extractOtpParts(r);
+      if (parts.reqDeviceId === deviceId) return false;
+      if (ackedCodes.has(parts.code)) return false;
+      return true;
+    });
+    if (!pendingOtp) {
+      banner.style.display = "none";
+      return;
+    }
+    const parts = extractOtpParts(pendingOtp);
+    banner.style.display = "flex";
+    banner.innerHTML = `
+      <div style="flex:1;min-width:210px;">
+        <div style="font-size:11px;font-weight:900;color:#FFD54F;">📲 NEW DEVICE LOGIN VERIFICATION REQUEST</div>
+        <div style="font-size:12px;color:var(--text);margin-top:2px;">
+          Device <strong>${escapeHtml(parts.model)}</strong> is trying to log in. Enter this 4-digit code there or tap Approve:
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span class="otp-code-display">${escapeHtml(parts.code)}</span>
+        <button class="btn btn-primary" style="width:auto;padding:8px 14px;" onclick="approveWebCrossDeviceOtp('${escapeHtml(pendingOtp.id)}', '${escapeHtml(parts.code)}')">
+          ✅ Approve Login Instantly
+        </button>
+      </div>
+    `;
+  }
+
+  // RequestMain Admin Official App Verification for Admin/Co-Admin Web Login
   window.requestAdminWebVerification = async function() {
     if (!currentUser || !isUserAdmin()) return;
     const statusBox = document.getElementById("adminWebVerifyStatusBox");
     const existingPending = allRequests.find(r =>
-      r.requestType === "ADMIN_WEB_AUTH" &&
+      isGenuineAdminWebAuthRequest(r) &&
       r.status === "PENDING" &&
       (r.deviceId === deviceId || r.userId === currentUser.uid)
     );
@@ -2520,32 +2892,74 @@
     if (!currentUser) {
       showScreen("gateAuth");
       document.getElementById("bottomNav").style.display = "none";
+      renderCrossDeviceOtpBanner();
       return;
     }
     updateNetworkUI();
+    renderCrossDeviceOtpBanner();
+
     const parsedSec = extractSecurityMeta(userProfile?.securityQuestion || localStorage.getItem("tz_sec_q_" + currentUser.uid) || "");
     const savedPass = parsedSec.password || localStorage.getItem("tz_pass_" + currentUser.uid) || "";
     const savedPin = localStorage.getItem("tz_pin_" + currentUser.uid) || userProfile?.appLockPin || "";
 
+    // Check if our active Cross-Device 4-Digit Code was approved from another logged-in device!
+    if (!isSessionUnlocked && activeWebCrossDeviceCode) {
+      const otpApproved = allRequests.some(r =>
+        r.userId === currentUser.uid &&
+        ((isRequestCrossDeviceOtp(r) && extractOtpParts(r).code === activeWebCrossDeviceCode && r.status === "APPROVED") ||
+         (isRequestCrossDeviceOtpAck(r) && String(r.utrNumber || r.utrReference || "").startsWith(`LOGIN_OTP_ACK|${activeWebCrossDeviceCode}`)))
+      );
+      if (otpApproved) {
+        isSessionUnlocked = true;
+        setWebDeviceTrusted(currentUser.uid, true);
+        activeWebCrossDeviceCode = "";
+        registerOrTouchCurrentDevice(currentUser.uid);
+        window.playWebSound("success");
+        showToast("✅ 2-Step Device Login Approved!");
+      }
+    }
+
     if (!isSessionUnlocked) {
       document.getElementById("bottomNav").style.display = "none";
       const setupFields = document.getElementById("pinSetupFields");
-      const pinWrapper = document.getElementById("pinInputWrapper");
+      const pinWrapper = document.getElementById("step2PinWrapper");
+      const passWrapper = document.getElementById("passwordFallbackWrapper");
+      const otpGateBox = document.getElementById("crossDeviceOtpGateBox");
+      const fallbackToggleBtn = document.getElementById("togglePasswordFallbackBtn");
+
       if (!savedPass) {
-        document.getElementById("pinGateTitle").textContent = "Set Up Account Password & Optional 2-Step PIN";
-        document.getElementById("pinGateSub").textContent = "Create your mandatory Account Password (min 6 chars). You can also optionally enable 2-Step Verification.";
-        setupFields.style.display = "flex";
+        document.getElementById("pinGateTitle").textContent = "Set Up Security Password & 2-Step Verification";
+        document.getElementById("pinGateSub").textContent = "Create your Security Password (min 6 chars) and optional 4–8 digit PIN.";
+        if (setupFields) setupFields.style.display = "flex";
+        if (otpGateBox) otpGateBox.style.display = "none";
+        if (passWrapper) passWrapper.style.display = "flex";
+        if (pinWrapper) pinWrapper.style.display = document.getElementById("enableTwoStepCheckbox")?.checked !== false ? "flex" : "none";
+        if (fallbackToggleBtn) fallbackToggleBtn.style.display = "none";
         document.getElementById("forgotPinBtn").style.display = "none";
-        if (pinWrapper) pinWrapper.style.display = document.getElementById("enableTwoStepCheckbox")?.checked ? "block" : "none";
       } else {
-        document.getElementById("pinGateTitle").textContent = parsedSec.twoStepEnabled ? "Password + 2-Step Security Verification" : "Account Password Verification";
-        document.getElementById("pinGateSub").textContent = parsedSec.twoStepEnabled
-          ? "Enter your Account Password and 4–8 digit Step 2 PIN to unlock Trading Zone."
-          : "Enter your Account Password to unlock Trading Zone.";
-        setupFields.style.display = "none";
-        if (pinWrapper) pinWrapper.style.display = (parsedSec.twoStepEnabled || isUserAdmin()) ? "block" : "none";
+        if (setupFields) setupFields.style.display = "none";
+        if (fallbackToggleBtn) fallbackToggleBtn.style.display = "inline-flex";
         document.getElementById("forgotPinBtn").style.display = "inline-flex";
         document.getElementById("recoveryQuestionLabel").textContent = "Question: " + parsedSec.question;
+
+        if (!useWebPasswordFallbackMode) {
+          // Primary 2-Step Mode: 4-Digit Quick Login Code sent to previously logged-in device
+          window.requestWebCrossDeviceOtp(false);
+          document.getElementById("pinGateTitle").textContent = "📲 2-Step Quick Device Verification";
+          document.getElementById("pinGateSub").textContent = "Enter the 4-digit code shown on your logged-in device (or tap Approve there).";
+          if (otpGateBox) otpGateBox.style.display = "flex";
+          if (pinWrapper) pinWrapper.style.display = "flex";
+          if (passWrapper) passWrapper.style.display = "none";
+          if (fallbackToggleBtn) fallbackToggleBtn.textContent = "🔑 Previous device unavailable? Use Security Password";
+        } else {
+          // Fallback Mode: Quick Login with Security Password
+          document.getElementById("pinGateTitle").textContent = "🔑 Quick Login with Security Password";
+          document.getElementById("pinGateSub").textContent = "Enter your Security / Account Password to unlock this device immediately.";
+          if (otpGateBox) otpGateBox.style.display = "none";
+          if (pinWrapper) pinWrapper.style.display = "none";
+          if (passWrapper) passWrapper.style.display = "flex";
+          if (fallbackToggleBtn) fallbackToggleBtn.textContent = "📲 Use 4-Digit Code from Logged-In Device Instead";
+        }
       }
       showScreen("gatePin");
       return;
@@ -2554,20 +2968,25 @@
     // MANDATORY MAIN ADMIN OFFICIAL ANDROID APP VERIFICATION FOR ADMIN / CO-ADMIN WEBSITE LOGIN
     if (isUserAdmin() && !isAdminWebSessionApproved()) {
       document.getElementById("bottomNav").style.display = "none";
-      const statusBox = document.getElementById("adminWebVerifyStatusBox");
+      const statusBox = document.getElementById("adminWebVerifyStatusText");
       const pendingReq = allRequests.find(r =>
-        r.requestType === "ADMIN_WEB_AUTH" &&
+        isGenuineAdminWebAuthRequest(r) &&
         (r.deviceId === deviceId || r.userId === currentUser.uid)
       );
+      if (document.getElementById("adminWebVerifyEmail")) {
+        document.getElementById("adminWebVerifyEmail").textContent = currentUser.email || "";
+      }
+      if (document.getElementById("adminWebVerifyDevice")) {
+        document.getElementById("adminWebVerifyDevice").textContent = `${deviceId} (${currentDeviceModel})`;
+      }
       if (statusBox) {
         if (!pendingReq) {
-          statusBox.textContent = `Device ${deviceId} (${currentDeviceModel}) requires verification from the Official Android App by the Main Admin with the App Password.`;
-          // Auto-dispatch verification request on first visit
+          statusBox.textContent = `Device ${deviceId} requires verification from the Official Android App by the Main Admin.`;
           window.requestAdminWebVerification();
         } else if (pendingReq.status === "PENDING") {
-          statusBox.innerHTML = `⏳ <strong>Waiting for Main Admin Approval on Official Android App...</strong><br/>Device: <strong>${escapeHtml(deviceId)} (${escapeHtml(currentDeviceModel)})</strong><br/>Open the Trading Zone Android App → Admin Console → Approvals → Enter Main Admin App Password to approve.`;
+          statusBox.innerHTML = `⏳ Waiting for Main Admin Approval on Official Android App...`;
         } else if (pendingReq.status === "REJECTED") {
-          statusBox.innerHTML = `🚫 <strong>Website Login Rejected by Main Admin on Official Android App.</strong>`;
+          statusBox.innerHTML = `🚫 Website Login Rejected by Main Admin on Official Android App.`;
         }
       }
       showScreen("gateAdminWebVerify");
@@ -2589,12 +3008,22 @@
     const activeUnbannedDevices = myDevices.filter(d => !d.isBanned);
     const maxLimit = getUserMaxDeviceLimit(userProfile);
 
+    const hasPendingUnbanAppeal = allRequests.some(r =>
+      r.userId === currentUser.uid && r.status === "PENDING" && isRequestUnbanAppeal(r)
+    );
+    const appealBox = document.getElementById("unbanAppealBox");
+    const appealPendingBadge = document.getElementById("unbanAppealPendingBadge");
+    const appealBtn = document.getElementById("submitUnbanAppealBtn");
+
     if (!isUserAdmin() && thisDeviceDoc?.isBanned) {
       document.getElementById("bottomNav").style.display = "none";
       document.getElementById("gateStatusBadge").className = "pill pill-crimson";
       document.getElementById("gateStatusBadge").textContent = "THIS DEVICE IS BLOCKED";
       document.getElementById("gateStatusTitle").textContent = "Device Access Blocked";
-      document.getElementById("gateStatusText").textContent = `This device (${deviceId} • ${currentDeviceModel}) was blocked from your account security settings or by Admin.`;
+      document.getElementById("gateStatusText").textContent = `This device (${deviceId} • ${currentDeviceModel}) was blocked. If blocked by mistake, request a Second Chance below:`;
+      if (appealBox) appealBox.style.display = "flex";
+      if (appealPendingBadge) appealPendingBadge.style.display = hasPendingUnbanAppeal ? "block" : "none";
+      if (appealBtn) appealBtn.style.display = hasPendingUnbanAppeal ? "none" : "inline-flex";
       showScreen("gateStatus");
       return;
     }
@@ -2625,8 +3054,11 @@
       document.getElementById("bottomNav").style.display = "none";
       document.getElementById("gateStatusBadge").className = "pill pill-crimson";
       document.getElementById("gateStatusBadge").textContent = "ACCOUNT & DEVICE SUSPENDED";
-      document.getElementById("gateStatusTitle").textContent = "Access Permanently Suspended";
-      document.getElementById("gateStatusText").textContent = "Your account or device was suspended for violating platform rules (No Refund Policy).";
+      document.getElementById("gateStatusTitle").textContent = "Access Suspended — Request a Second Chance";
+      document.getElementById("gateStatusText").textContent = "Your account or device was suspended. If banned by mistake, submit a Second-Chance Unban Request to Admin below:";
+      if (appealBox) appealBox.style.display = "flex";
+      if (appealPendingBadge) appealPendingBadge.style.display = hasPendingUnbanAppeal ? "block" : "none";
+      if (appealBtn) appealBtn.style.display = hasPendingUnbanAppeal ? "none" : "inline-flex";
       showScreen("gateStatus");
       return;
     }
@@ -2637,6 +3069,7 @@
       document.getElementById("gateStatusBadge").textContent = "WAITING FOR ADMIN APPROVAL";
       document.getElementById("gateStatusTitle").textContent = "Registration Submitted";
       document.getElementById("gateStatusText").textContent = "Admin is verifying your profile photo and registration details. This screen unlocks automatically once approved.";
+      if (appealBox) appealBox.style.display = "none";
       showScreen("gateStatus");
       return;
     }
@@ -2670,6 +3103,41 @@
     renderSettingsDevices();
   }
 
+  window.submitWebUnbanAppeal = async function() {
+    if (!currentUser) return;
+    const reason = (document.getElementById("unbanAppealReasonInput")?.value || "Banned by mistake — requesting a second chance.").trim();
+    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
+      ? adminSettings.adminEmails
+      : [PRIMARY_ADMIN_EMAIL];
+    try {
+      await addDoc(collection(db, "access_requests"), {
+        userId: currentUser.uid,
+        userEmail: (currentUser.email || userProfile?.email || "").substring(0, 200),
+        userName: (userProfile?.fullName || currentUser.email || "Member").substring(0, 120),
+        userPhone: (userProfile?.phoneNumber || "").substring(0, 40),
+        userPhotoBase64: (userProfile?.photoBase64 || "").substring(0, 450000),
+        deviceId,
+        ipAddress: `Web (${currentDeviceModel})`.substring(0, 100),
+        requestType: "ADMIN_WEB_AUTH",
+        planName: `Second-Chance Unban Appeal (${currentDeviceModel})`.substring(0, 120),
+        amountInr: 0,
+        validityDays: 7,
+        utrNumber: `UNBAN_APPEAL|${reason.replace(/\|/g, " ").substring(0, 80)}`.substring(0, 100),
+        paymentProofBase64: "",
+        status: "PENDING",
+        adminNote: "",
+        adminEmails: activeAdmins,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      window.playWebSound("success");
+      showToast("🙏 Second-Chance Unban Request sent to Admin!");
+      evaluateNavigationGates();
+    } catch (e) {
+      showToast(e?.message || "Could not send unban appeal");
+    }
+  };
+
   window.installMandatoryWebFirmwareNow = function() {
     const { firmwareConfig } = parsePricingMeta();
     const stamp = `${firmwareConfig.versionName}_${firmwareConfig.pushedAtMillis}`;
@@ -2684,21 +3152,21 @@
     }, 950);
   };
 
-  // Account Password + Optional 2-Step PIN Gate Submit
+  // 2-Step 4-Digit Quick Device Code OR Security Password Fallback Gate Submit
   window.submitPinGate = async function() {
     const appPass = document.getElementById("appPasswordGateInput")?.value.trim() || "";
     const pin = document.getElementById("pinInput")?.value.trim() || "";
-    if (appPass.length < 6) {
-      window.playWebSound("alert");
-      showToast("Enter your Account Password (at least 6 characters)");
-      return;
-    }
     const parsedSec = extractSecurityMeta(userProfile?.securityQuestion || localStorage.getItem("tz_sec_q_" + currentUser.uid) || "");
     const savedPass = parsedSec.password || localStorage.getItem("tz_pass_" + currentUser.uid) || "";
     const savedPin = localStorage.getItem("tz_pin_" + currentUser.uid) || userProfile?.appLockPin || "";
 
     if (!savedPass) {
-      const enable2FA = !!document.getElementById("enableTwoStepCheckbox")?.checked;
+      if (appPass.length < 6) {
+        window.playWebSound("alert");
+        showToast("Enter a Security Password (at least 6 characters)");
+        return;
+      }
+      const enable2FA = document.getElementById("enableTwoStepCheckbox")?.checked !== false;
       if (enable2FA && (pin.length < 4 || pin.length > 8 || !/^\d+$/.test(pin))) {
         window.playWebSound("alert");
         showToast("Enter a 4–8 digit numeric PIN for 2-Step Verification");
@@ -2716,6 +3184,7 @@
       localStorage.setItem("tz_pin_" + currentUser.uid, finalPin);
       localStorage.setItem("tz_sec_q_" + currentUser.uid, encodedQ);
       localStorage.setItem("tz_sec_a_" + currentUser.uid, a.toLowerCase());
+      setWebDeviceTrusted(currentUser.uid, true);
       isSessionUnlocked = true;
       if (userProfile?.id) {
         try {
@@ -2730,23 +3199,47 @@
       await registerOrTouchCurrentDevice(currentUser.uid);
       window.playWebSound("success");
       evaluateNavigationGates();
-    } else {
-      const passMatches = appPass === savedPass || appPass.toLowerCase() === String(userProfile?.securityAnswer || "").trim().toLowerCase();
-      const requiresPin = parsedSec.twoStepEnabled || isUserAdmin();
-      const pinMatches = !requiresPin || !savedPin || pin === savedPin || pin === userProfile?.appLockPin;
-      if (passMatches && pinMatches) {
-        localStorage.setItem("tz_pass_" + currentUser.uid, appPass);
-        if (pin) localStorage.setItem("tz_pin_" + currentUser.uid, pin);
+      return;
+    }
+
+    // Returning user on a new/locked device:
+    // Check 1: Did they enter the 4-digit Cross-Device Code OR their saved PIN?
+    if (!useWebPasswordFallbackMode) {
+      const codeMatches = (activeWebCrossDeviceCode && pin === activeWebCrossDeviceCode) ||
+        (savedPin && pin === savedPin) ||
+        (userProfile?.appLockPin && pin === userProfile.appLockPin);
+      if (codeMatches && pin.length >= 4) {
+        setWebDeviceTrusted(currentUser.uid, true);
         isSessionUnlocked = true;
-        document.getElementById("appPasswordGateInput").value = "";
+        activeWebCrossDeviceCode = "";
         if (document.getElementById("pinInput")) document.getElementById("pinInput").value = "";
         await registerOrTouchCurrentDevice(currentUser.uid);
         window.playWebSound("success");
+        showToast("✅ 2-Step Code Verified! Device Unlocked.");
         evaluateNavigationGates();
       } else {
         window.playWebSound("alert");
-        showToast(requiresPin ? "🚫 Invalid Account Password or Step 2 PIN!" : "🚫 Invalid Account Password!");
+        showToast("🚫 Invalid 4-Digit Code! Check your logged-in device or switch to Security Password below.");
       }
+      return;
+    }
+
+    // Check 2: Security Password Fallback Mode
+    const passMatches = appPass === savedPass ||
+      appPass.toLowerCase() === String(userProfile?.securityAnswer || "").trim().toLowerCase();
+    if (passMatches && appPass.length >= 4) {
+      localStorage.setItem("tz_pass_" + currentUser.uid, appPass);
+      setWebDeviceTrusted(currentUser.uid, true);
+      isSessionUnlocked = true;
+      activeWebCrossDeviceCode = "";
+      if (document.getElementById("appPasswordGateInput")) document.getElementById("appPasswordGateInput").value = "";
+      await registerOrTouchCurrentDevice(currentUser.uid);
+      window.playWebSound("success");
+      showToast("✅ Security Password Verified! Device Unlocked.");
+      evaluateNavigationGates();
+    } else {
+      window.playWebSound("alert");
+      showToast("🚫 Invalid Security Password!");
     }
   };
 
@@ -2782,6 +3275,7 @@
         });
       } catch (_) {}
     }
+    setWebDeviceTrusted(currentUser.uid, true);
     isSessionUnlocked = true;
     window.playWebSound("success");
     showToast("✅ Account Password reset! Session unlocked.");
@@ -2789,7 +3283,9 @@
   };
 
   window.lockSessionNow = function() {
+    if (currentUser?.uid) setWebDeviceTrusted(currentUser.uid, false);
     isSessionUnlocked = false;
+    useWebPasswordFallbackMode = false;
     evaluateNavigationGates();
   };
 
@@ -4123,10 +4619,71 @@
   };
 
   function renderAdminPanel() {
+    // 0. Banned Users & Hardware Devices Recovery List ("Give a Second Chance")
+    const bannedUsers = allUsers.filter(u => u.accountStatus === "BANNED");
+    const bannedDevices = allDevices.filter(d => d.isBanned);
+    const pendingAppeals = allRequests.filter(r => r.status === "PENDING" && isRequestUnbanAppeal(r));
+    const bannedBadge = document.getElementById("adminBannedCountBadge");
+    if (bannedBadge) {
+      const totalCount = bannedUsers.length + bannedDevices.length + pendingAppeals.length;
+      bannedBadge.textContent = `${totalCount} Active`;
+    }
+    const bannedEl = document.getElementById("adminBannedList");
+    if (bannedEl) {
+      const bItems = [];
+      pendingAppeals.forEach(r => {
+        const appealReason = String(r.utrNumber || r.utrReference || "").substring("UNBAN_APPEAL|".length) || "Banned by mistake — requesting a second chance.";
+        bItems.push(`
+          <div style="padding:10px;border:1px solid var(--amber);border-radius:12px;background:rgba(245,158,11,0.12);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:180px;">
+              <span class="pill pill-amber">🙏 SECOND-CHANCE APPEAL</span>
+              <div style="font-weight:800;font-size:13px;margin-top:4px;">${escapeHtml(r.userName || r.userEmail)} (${escapeHtml(r.userEmail)})</div>
+              <div style="font-size:12px;color:#FFD54F;margin-top:2px;">"${escapeHtml(appealReason)}"</div>
+              <div class="card-sub">Device: ${escapeHtml(r.deviceId)}</div>
+            </div>
+            <button class="btn btn-primary" style="width:auto;padding:8px 14px;" onclick="adminUnbanUserAndDevices('${escapeHtml(r.userId)}', '${escapeHtml(r.deviceId)}', '${escapeHtml(r.id)}')">
+              ✅ Unban &amp; Give 2nd Chance
+            </button>
+          </div>
+        `);
+      });
+      bannedUsers.forEach(u => {
+        const uid = u.userId || u.id;
+        bItems.push(`
+          <div style="padding:10px;border:1px solid var(--crimson);border-radius:12px;background:rgba(239,68,68,0.1);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:800;font-size:13px;">🚫 Banned User: ${escapeHtml(u.fullName || u.email)}</div>
+              <div class="card-sub">${escapeHtml(u.email)} • ${escapeHtml(u.phoneNumber || "")} • Device: ${escapeHtml(u.deviceId || "")}</div>
+            </div>
+            <button class="btn btn-primary" style="width:auto;padding:8px 14px;" onclick="adminUnbanUserAndDevices('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}', '')">
+              ✅ Unban &amp; Give 2nd Chance
+            </button>
+          </div>
+        `);
+      });
+      bannedDevices.forEach(d => {
+        if (bannedUsers.some(u => (u.userId || u.id) === d.boundUserId)) return;
+        bItems.push(`
+          <div style="padding:10px;border:1px solid var(--crimson);border-radius:12px;background:rgba(239,68,68,0.08);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:800;font-size:13px;">📱 Blocked Device: ${escapeHtml(d.deviceModel || d.deviceId)}</div>
+              <div class="card-sub">Device ID: ${escapeHtml(d.deviceId)} • Bound User: ${escapeHtml(d.boundUserId || "None")}</div>
+            </div>
+            <button class="btn btn-primary" style="width:auto;padding:8px 14px;" onclick="adminUnbanUserAndDevices('${escapeHtml(d.boundUserId || "")}', '${escapeHtml(d.deviceId)}', '')">
+              ✅ Unblock Device
+            </button>
+          </div>
+        `);
+      });
+      bannedEl.innerHTML = bItems.length
+        ? bItems.join("")
+        : `<div class="card-sub" style="color:var(--emerald);">✅ No banned users or blocked hardware devices right now.</div>`;
+    }
+
     // 1. Approvals
     const pendingRegs = allUsers.filter(u => u.accountStatus === "PENDING_APPROVAL");
     const pendingEdits = allUsers.filter(u => u.hasPendingProfileEdit);
-    const pendingReqs = allRequests.filter(r => r.status === "PENDING");
+    const pendingReqs = allRequests.filter(r => r.status === "PENDING" && !isRequestCrossDeviceOtp(r) && !isRequestCrossDeviceOtpAck(r));
     const appEl = document.getElementById("adminApprovalsList");
     if (appEl) {
       const itemsHtml = [];
@@ -4155,7 +4712,20 @@
         `);
       });
       pendingReqs.forEach(r => {
-        if (r.requestType === "ADMIN_WEB_AUTH") {
+        if (isRequestUnbanAppeal(r)) {
+          const appealReason = String(r.utrNumber || r.utrReference || "").substring("UNBAN_APPEAL|".length) || "Banned by mistake";
+          itemsHtml.push(`
+            <div style="padding:10px;border:1px solid var(--amber);border-radius:12px;background:var(--amber-dim);">
+              <span class="pill pill-amber">🙏 SECOND-CHANCE UNBAN APPEAL</span>
+              <div style="font-weight:800;font-size:13px;margin-top:4px;">${escapeHtml(r.userName || r.userEmail)} • ${escapeHtml(r.deviceId)}</div>
+              <div class="card-sub">Reason: "${escapeHtml(appealReason)}"</div>
+              <div class="btn-row" style="margin-top:8px;">
+                <button class="btn btn-primary" onclick="adminUnbanUserAndDevices('${escapeHtml(r.userId)}', '${escapeHtml(r.deviceId)}', '${escapeHtml(r.id)}')">✅ Unban &amp; Give 2nd Chance</button>
+                <button class="btn btn-crimson" onclick="adminRejectAccessReq('${escapeHtml(r.id)}')">Reject</button>
+              </div>
+            </div>
+          `);
+        } else if (isGenuineAdminWebAuthRequest(r)) {
           itemsHtml.push(`
             <div style="padding:10px;border:1px solid var(--amber);border-radius:12px;background:var(--amber-dim);">
               <span class="pill pill-amber">📲 ADMIN WEB LOGIN REQUEST</span>
@@ -4179,7 +4749,7 @@
       appEl.innerHTML = itemsHtml.length ? itemsHtml.join("") : `<div class="card-sub">No pending approvals.</div>`;
     }
 
-    // 2. Moderation Alerts
+    // 2. Moderation Alerts (with both Ban and Unban / 2nd Chance buttons)
     const alertEl = document.getElementById("adminAlertsList");
     if (alertEl) {
       if (moderationAlerts.length === 0) {
@@ -4192,6 +4762,7 @@
             <div class="card-sub">Triggered: ${escapeHtml(Array.isArray(a.detectedWords) ? a.detectedWords.join(", ") : (a.detectedWords || ""))} • Status: ${escapeHtml(a.status)}</div>
             <div class="btn-row" style="margin-top:8px;">
               <button class="btn btn-crimson" onclick="adminBanUser('${a.userId}', '${a.deviceId}')">Ban User &amp; Device</button>
+              <button class="btn btn-primary" onclick="adminUnbanUserAndDevices('${a.userId}', '${a.deviceId}', '')">✅ Unban &amp; 2nd Chance</button>
             </div>
           </div>
         `).join("");
@@ -4206,10 +4777,11 @@
         const uid = u.userId || u.id;
         const userDevs = allDevices.filter(d => d.boundUserId === uid);
         const activeDevs = userDevs.filter(d => !d.isBanned);
+        const hasBannedDev = userDevs.some(d => d.isBanned);
         const maxLim = getUserMaxDeviceLimit(u);
         const avatarSrc = u.photoBase64 ? `data:image/jpeg;base64,${u.photoBase64}` : DEFAULT_AVATAR_SVG;
         return `
-        <div style="padding:12px;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:6px;">
+        <div style="padding:12px;border:1px solid ${u.accountStatus === "BANNED" ? "var(--crimson)" : "var(--border)"};border-radius:12px;display:flex;flex-direction:column;gap:6px;">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
             <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="openMemberProfilesSwipeLightbox(${uIdx})" title="Tap to swipe member profiles &amp; photos">
               <img src="${avatarSrc}" class="avatar" style="width:38px;height:38px;" alt="Member" />
@@ -4218,7 +4790,14 @@
                 <div style="font-size:10px;color:var(--emerald);font-weight:800;">🖼️ Tap to swipe profile &amp; photo</div>
               </div>
             </div>
-            <span class="pill ${activeDevs.length > maxLim ? "pill-crimson" : "pill-emerald"}">📱 ${activeDevs.length} / ${maxLim} Devices</span>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              ${(u.accountStatus === "BANNED" || hasBannedDev) ? `
+                <button class="btn btn-primary" style="width:auto;padding:4px 10px;font-size:11px;" onclick="adminUnbanUserAndDevices('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}', '')">✅ Unban &amp; 2nd Chance</button>
+              ` : `
+                <button class="btn btn-crimson" style="width:auto;padding:4px 10px;font-size:11px;" onclick="adminBanUser('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}')">Ban</button>
+              `}
+              <span class="pill ${activeDevs.length > maxLim ? "pill-crimson" : "pill-emerald"}">📱 ${activeDevs.length} / ${maxLim} Devices</span>
+            </div>
           </div>
           <div class="card-sub">${escapeHtml(u.email)} • ${escapeHtml(u.phoneNumber || "")}</div>
           <div style="font-size:12px;color:var(--emerald);font-weight:700;">
@@ -4236,7 +4815,7 @@
                 <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;gap:6px;flex-wrap:wrap;">
                   <span>📱 <strong>${escapeHtml(d.deviceModel || d.deviceId)}</strong> (${escapeHtml(d.deviceId)}) ${d.isBanned ? `<span class="pill pill-crimson">BLOCKED</span>` : ""}</span>
                   <div style="display:flex;gap:4px;">
-                    <button class="btn btn-outline" style="width:auto;padding:3px 8px;font-size:10px;" onclick="userToggleDeviceBlock('${escapeHtml(d.deviceId)}', ${!d.isBanned})">${d.isBanned ? "Unblock" : "Block"}</button>
+                    <button class="btn ${d.isBanned ? "btn-primary" : "btn-outline"}" style="width:auto;padding:3px 8px;font-size:10px;" onclick="userToggleDeviceBlock('${escapeHtml(d.deviceId)}', ${!d.isBanned})">${d.isBanned ? "✅ Unban Device" : "Block"}</button>
                     <button class="btn btn-crimson" style="width:auto;padding:3px 8px;font-size:10px;" onclick="userRemoveDeviceSession('${escapeHtml(d.deviceId)}')">Remove</button>
                   </div>
                 </div>
@@ -4248,6 +4827,70 @@
       }).join("");
     }
   }
+
+  window.adminUnbanUserAndDevices = async function(uid, devId, appealReqId) {
+    if (!isUserAdmin()) return;
+    const now = Date.now();
+    try {
+      if (uid) {
+        const u = allUsers.find(x => (x.userId || x.id) === uid);
+        const curExp = Number(u?.validUntilMillis || 0);
+        const updates = {
+          accountStatus: "APPROVED",
+          isCommodityMuted: false,
+          updatedAt: serverTimestamp()
+        };
+        if (curExp <= now) {
+          updates.entitlementStatus = "TRIAL_ACTIVE";
+          updates.activePlanName = u?.activePlanName || "Second-Chance 7-Day Access";
+          updates.validUntilMillis = now + 7 * 86400000;
+        }
+        await updateDoc(doc(db, "users", uid), updates);
+        // Unban all hardware devices bound to this user
+        const userDevs = allDevices.filter(d => d.boundUserId === uid && d.isBanned);
+        for (const d of userDevs) {
+          await updateDoc(doc(db, "device_registry", d.deviceId || d.id), {
+            isBanned: false,
+            updatedAt: serverTimestamp()
+          });
+        }
+        // Resolve open moderation alerts for this user
+        const userAlerts = moderationAlerts.filter(a => a.userId === uid && a.status !== "UNBANNED_SECOND_CHANCE");
+        for (const a of userAlerts) {
+          await updateDoc(doc(db, "moderation_alerts", a.id), {
+            status: "UNBANNED_SECOND_CHANCE",
+            updatedAt: serverTimestamp()
+          });
+        }
+        // Approve any pending second-chance unban appeals for this user
+        const userAppeals = allRequests.filter(r => r.userId === uid && r.status === "PENDING" && isRequestUnbanAppeal(r));
+        for (const r of userAppeals) {
+          await updateDoc(doc(db, "access_requests", r.id), {
+            status: "APPROVED",
+            adminNote: "Unbanned & granted second chance",
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+      if (devId) {
+        await updateDoc(doc(db, "device_registry", devId), {
+          isBanned: false,
+          updatedAt: serverTimestamp()
+        });
+      }
+      if (appealReqId) {
+        await updateDoc(doc(db, "access_requests", appealReqId), {
+          status: "APPROVED",
+          adminNote: "Unbanned & granted second chance",
+          updatedAt: serverTimestamp()
+        });
+      }
+      window.playWebSound("TARGET HIT");
+      showToast("✅ User & hardware device unbanned! Second chance granted.");
+    } catch (e) {
+      showToast(e?.message || "Could not complete unban");
+    }
+  };
 
   window.adminApproveMember = async function(uid, withTrial) {
     const now = Date.now();

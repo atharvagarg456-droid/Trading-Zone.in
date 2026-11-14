@@ -1528,6 +1528,153 @@ class TradingRepository(private val db: FirebaseFirestore) {
         }
     }
 
+    private fun sanitizeAdminEmails(adminEmails: List<String>): List<String> =
+        (adminEmails + PRIMARY_ADMIN_EMAIL)
+            .map { it.trim().take(200) }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(15)
+
+    suspend fun submitCrossDeviceLoginOtp(
+        profile: UserProfile?,
+        userEmail: String,
+        deviceId: String,
+        deviceModel: String,
+        ipAddress: String,
+        code4Digit: String,
+        adminEmails: List<String>
+    ): Result<String> = runCatching {
+        val uid = requireUserId()
+        val ref = db.collection("access_requests").document()
+        val cleanCode = code4Digit.filter(Char::isDigit).take(4).ifBlank { "4829" }
+        val cleanModel = deviceModel.replace("|", " ").trim().ifBlank { "New Device" }.take(60)
+        val cleanDevId = deviceId.replace("|", "").trim().take(60)
+        try {
+            ref.set(
+                mapOf(
+                    "userId" to uid,
+                    "userEmail" to (profile?.email?.ifBlank { userEmail } ?: userEmail).take(200),
+                    "userName" to (profile?.fullName?.ifBlank { "Member" } ?: "Member").take(120),
+                    "userPhotoBase64" to (profile?.photoBase64 ?: "").take(450000),
+                    "deviceId" to cleanDevId.ifBlank { "unknown_device" },
+                    "ipAddress" to ipAddress.ifBlank { "0.0.0.0" }.take(80),
+                    "requestType" to "ADMIN_WEB_AUTH",
+                    "planName" to "Quick Login Code: $cleanCode".take(120),
+                    "amountInr" to 0.0,
+                    "validityDays" to 1L,
+                    "utrReference" to "LOGIN_OTP|$cleanCode|$cleanModel|$cleanDevId".take(245),
+                    "paymentScreenshotBase64" to "",
+                    "status" to "PENDING",
+                    "adminEmails" to sanitizeAdminEmails(adminEmails),
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            ref.id
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, ref.path)
+            throw e
+        }
+    }
+
+    suspend fun approveCrossDeviceLoginOtp(
+        profile: UserProfile?,
+        userEmail: String,
+        approverDeviceId: String,
+        ipAddress: String,
+        code4Digit: String,
+        requestId: String,
+        adminEmails: List<String>,
+        isAdmin: Boolean
+    ): Result<Unit> = runCatching {
+        val uid = requireUserId()
+        val cleanCode = code4Digit.filter(Char::isDigit).take(4)
+        if (isAdmin && requestId.isNotBlank()) {
+            try {
+                db.collection("access_requests").document(requestId).update(
+                    mapOf(
+                        "status" to "APPROVED",
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            } catch (_: Exception) {
+            }
+        }
+        val ackRef = db.collection("access_requests").document()
+        try {
+            ackRef.set(
+                mapOf(
+                    "userId" to uid,
+                    "userEmail" to (profile?.email?.ifBlank { userEmail } ?: userEmail).take(200),
+                    "userName" to (profile?.fullName?.ifBlank { "Verified Device" } ?: "Verified Device").take(120),
+                    "userPhotoBase64" to "",
+                    "deviceId" to approverDeviceId.ifBlank { "trusted_device" }.take(120),
+                    "ipAddress" to ipAddress.ifBlank { "0.0.0.0" }.take(80),
+                    "requestType" to "ADMIN_WEB_AUTH",
+                    "planName" to "Approved Quick Login ($cleanCode)".take(120),
+                    "amountInr" to 0.0,
+                    "validityDays" to 1L,
+                    "utrReference" to "LOGIN_OTP_ACK|$cleanCode|$requestId".take(245),
+                    "paymentScreenshotBase64" to "",
+                    "status" to "PENDING",
+                    "adminEmails" to sanitizeAdminEmails(adminEmails),
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, ackRef.path)
+            throw e
+        }
+    }
+
+    suspend fun submitUnbanAppealRequest(
+        profile: UserProfile,
+        deviceId: String,
+        deviceModel: String,
+        ipAddress: String,
+        appealReason: String,
+        adminEmails: List<String>
+    ): Result<String> = runCatching {
+        val uid = requireUserId()
+        val ref = db.collection("access_requests").document()
+        val cleanReason = appealReason.replace("|", " ").trim()
+            .ifBlank { "Banned by mistake — requesting a second chance to access Trading Zone." }
+            .take(180)
+        try {
+            ref.set(
+                mapOf(
+                    "userId" to uid,
+                    "userEmail" to profile.email.take(200),
+                    "userName" to profile.fullName.ifBlank { profile.email }.take(120),
+                    "userPhotoBase64" to profile.photoBase64.take(450000),
+                    "deviceId" to deviceId.ifBlank { profile.deviceId }.ifBlank { "device" }.take(120),
+                    "ipAddress" to ipAddress.ifBlank { profile.ipAddress }.ifBlank { "0.0.0.0" }.take(80),
+                    "requestType" to "ADMIN_WEB_AUTH",
+                    "planName" to "Second Chance Unban Appeal (${deviceModel.ifBlank { "Mobile" }})".take(120),
+                    "amountInr" to 0.0,
+                    "validityDays" to 7L,
+                    "utrReference" to "UNBAN_APPEAL|$cleanReason".take(245),
+                    "paymentScreenshotBase64" to "",
+                    "status" to "PENDING",
+                    "adminEmails" to sanitizeAdminEmails(adminEmails),
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            ref.id
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, ref.path)
+            throw e
+        }
+    }
+
     suspend fun reviewAccessRequest(
         request: AccessRequest,
         approve: Boolean
@@ -1543,7 +1690,26 @@ class TradingRepository(private val db: FirebaseFirestore) {
                 )
             ).await()
 
-            if (approve && request.requestType != "ADMIN_WEB_AUTH") {
+            if (approve && request.isUnbanAppealRequest()) {
+                userRef.update(
+                    mapOf(
+                        "accountStatus" to "APPROVED",
+                        "isCommodityMuted" to false,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+                if (request.deviceId.isNotBlank()) {
+                    try {
+                        db.collection("device_registry").document(request.deviceId).update(
+                            mapOf(
+                                "isBanned" to false,
+                                "updatedAt" to FieldValue.serverTimestamp()
+                            )
+                        ).await()
+                    } catch (_: Exception) {
+                    }
+                }
+            } else if (approve && request.requestType != "ADMIN_WEB_AUTH") {
                 val days = request.validityDays.coerceAtLeast(1L)
                 val nextValidUntil = System.currentTimeMillis() + days * 86_400_000L
                 val isTrial = request.requestType == "FREE_TRIAL_7D"
@@ -1619,24 +1785,39 @@ class TradingRepository(private val db: FirebaseFirestore) {
 
     suspend fun setDeviceBanStatus(
         user: UserProfile,
-        ban: Boolean
+        ban: Boolean,
+        allUserDevices: List<DeviceRecord> = emptyList()
     ): Result<Unit> = runCatching {
         requireUserId()
         val userRef = db.collection("users").document(user.userId)
         try {
-            userRef.update(
-                mapOf(
-                    "accountStatus" to if (ban) "BANNED" else "APPROVED",
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-            ).await()
-            if (user.deviceId.isNotBlank()) {
-                db.collection("device_registry").document(user.deviceId).update(
-                    mapOf(
-                        "isBanned" to ban,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
+            val updates = mutableMapOf<String, Any>(
+                "accountStatus" to if (ban) "BANNED" else "APPROVED",
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            if (!ban) {
+                updates["isCommodityMuted"] = false
+                if (user.validUntilMillis <= System.currentTimeMillis()) {
+                    updates["entitlementStatus"] = "TRIAL_ACTIVE"
+                    updates["activePlanName"] = user.activePlanName.ifBlank { "Second Chance Access (7d)" }
+                    updates["validUntilMillis"] = System.currentTimeMillis() + 7L * 86_400_000L
+                }
+            }
+            userRef.update(updates).await()
+            val targetDeviceIds = (listOf(user.deviceId) + allUserDevices.map { it.deviceId })
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+            targetDeviceIds.forEach { devId ->
+                try {
+                    db.collection("device_registry").document(devId).update(
+                        mapOf(
+                            "isBanned" to ban,
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    ).await()
+                } catch (_: Exception) {
+                }
             }
         } catch (e: CancellationException) {
             throw e

@@ -758,9 +758,15 @@ fun AppLockUnlockScreen(
     onVerifyPin: (String) -> Boolean,
     onRecoverPin: (answer: String, newPin: String) -> Boolean,
     onBiometricUnlockSuccess: () -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    myAccessRequests: List<com.example.data.model.AccessRequest> = emptyList(),
+    currentDeviceId: String = "",
+    onRequestCrossDeviceOtp: (code4Digit: String) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val generatedOtpCode = remember { (1000..9999).random().toString() }
+    var hasSentOtpToPreviousDevice by remember { mutableStateOf(false) }
+    var usePasswordFallbackMode by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var pinInput by remember { mutableStateOf("") }
     var errorText by remember { mutableStateOf<String?>(null) }
@@ -774,11 +780,33 @@ fun AppLockUnlockScreen(
     val expectedAppPassword = remember(securityQuestion) {
         dummyProfile.extractAppPassword()
     }
-    val isTwoStepRequired = remember(securityQuestion, isAdmin, isTwoStepEnabled) {
-        isTwoStepEnabled || dummyProfile.isTwoStepEnabled(defaultForRole = isAdmin)
-    }
     val displaySecurityQuestion = remember(securityQuestion) {
         dummyProfile.displaySecurityQuestion()
+    }
+
+    // Automatically send the 4-digit quick login code to any previously logged-in device on first display
+    LaunchedEffect(generatedOtpCode) {
+        if (!hasSentOtpToPreviousDevice) {
+            hasSentOtpToPreviousDevice = true
+            onRequestCrossDeviceOtp(generatedOtpCode)
+        }
+    }
+
+    // Listen in real time if the user's previous logged-in device approved this 4-digit code
+    val isApprovedByPreviousDevice = remember(myAccessRequests, generatedOtpCode) {
+        myAccessRequests.any { req ->
+            req.utrReference.startsWith("LOGIN_OTP_ACK|$generatedOtpCode") ||
+                (req.isCrossDeviceLoginOtpRequest() &&
+                    req.extractCrossDeviceLoginOtpCode() == generatedOtpCode &&
+                    req.status == "APPROVED")
+        }
+    }
+
+    LaunchedEffect(isApprovedByPreviousDevice) {
+        if (isApprovedByPreviousDevice) {
+            com.example.util.SoundAndHapticFeedback.playTradeSignal(context, "TARGET HIT")
+            onBiometricUnlockSuccess()
+        }
     }
 
     fun triggerHardwareBiometric() {
@@ -805,7 +833,7 @@ fun AppLockUnlockScreen(
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Unlock Trading Zone")
             .setSubtitle(userEmail)
-            .setNegativeButtonText("Use Account Password")
+            .setNegativeButtonText("Use 4-Digit Code")
             .build()
         try {
             prompt.authenticate(info)
@@ -879,13 +907,14 @@ fun AppLockUnlockScreen(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 440.dp),
+                .widthIn(max = 450.dp),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -901,10 +930,10 @@ fun AppLockUnlockScreen(
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
-                        text = if (isTwoStepRequired) {
-                            "🛡️ 2-STEP VERIFICATION ACTIVE"
+                        text = if (usePasswordFallbackMode) {
+                            "🔑 QUICK PASSWORD LOGIN"
                         } else {
-                            "🔒 PASSWORD VERIFICATION REQUIRED"
+                            "📲 2-STEP 4-DIGIT DEVICE VERIFICATION"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.ExtraBold,
@@ -914,7 +943,7 @@ fun AppLockUnlockScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Verify Account Login",
+                    text = if (usePasswordFallbackMode) "Security Password Login" else "Quick Device Verification",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
@@ -926,51 +955,132 @@ fun AppLockUnlockScreen(
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                val showPasswordBox = expectedAppPassword.isNotBlank() || onVerifyAppPassword != null
-                if (showPasswordBox) {
-                    OutlinedTextField(
-                        value = passwordInput,
-                        onValueChange = {
-                            passwordInput = it
+                // Mode Switcher Pills: 1) 4-Digit Code on Previous Device  2) Security Password Fallback
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            com.example.util.SoundAndHapticFeedback.playTap(context)
+                            usePasswordFallbackMode = false
                             errorText = null
                         },
-                        label = {
-                            Text(
-                                if (isTwoStepRequired) "Step 1: Enter Account Password" else "Enter Account Password"
-                            )
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "📲 4-Digit Code",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            com.example.util.SoundAndHapticFeedback.playTap(context)
+                            usePasswordFallbackMode = true
+                            errorText = null
                         },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("unlock_app_password_input")
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "🔑 Password Fallback",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
-                if (isTwoStepRequired || !showPasswordBox) {
-                    OutlinedTextField(
-                        value = pinInput,
-                        onValueChange = {
-                            if (it.length <= 8) {
-                                pinInput = it.filter { ch -> ch.isDigit() }
-                                errorText = null
+                Spacer(modifier = Modifier.height(14.dp))
+
+                AnimatedVisibility(visible = !usePasswordFallbackMode) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "📲 4-Digit Code Sent to Logged-In Device",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Enter the 4-digit code shown on your previously logged-in mobile/web session (or your 4-digit PIN), or tap 'Approve Login' on your previous device.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                                TextButton(
+                                    onClick = {
+                                        com.example.util.SoundAndHapticFeedback.playClick(context)
+                                        onRequestCrossDeviceOtp(generatedOtpCode)
+                                    }
+                                ) {
+                                    Text("🔄 Resend 4-Digit Code to Logged-In Device")
+                                }
                             }
-                        },
-                        label = {
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedTextField(
+                            value = pinInput,
+                            onValueChange = {
+                                if (it.length <= 8) {
+                                    pinInput = it.filter { ch -> ch.isDigit() }
+                                    errorText = null
+                                }
+                            },
+                            label = { Text("Enter 4-Digit Code or App PIN") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("unlock_pin_input")
+                        )
+                    }
+                }
+
+                AnimatedVisibility(visible = usePasswordFallbackMode) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Text(
-                                if (showPasswordBox) "Step 2: Enter 4–8 Digit 2FA PIN" else "Enter 4–8 Digit Security PIN"
+                                text = "🔑 Previous device not nearby? Enter your Security Password for instant quick login.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(12.dp)
                             )
-                        },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("unlock_pin_input")
-                    )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = passwordInput,
+                            onValueChange = {
+                                passwordInput = it
+                                errorText = null
+                            },
+                            label = { Text("Enter Security Password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("unlock_app_password_input")
+                        )
+                    }
                 }
 
                 if (!errorText.isNullOrBlank()) {
@@ -987,25 +1097,39 @@ fun AppLockUnlockScreen(
 
                 Button(
                     onClick = {
-                        val passOk = when {
-                            onVerifyAppPassword != null -> onVerifyAppPassword(passwordInput.trim())
-                            expectedAppPassword.isNotBlank() -> passwordInput.trim() == expectedAppPassword
-                            else -> true
-                        }
-                        if (!passOk) {
-                            com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
-                            errorText = "Incorrect Account Password."
-                        } else if (isTwoStepRequired || !showPasswordBox) {
-                            if (!onVerifyPin(pinInput)) {
+                        if (usePasswordFallbackMode) {
+                            val cleanPass = passwordInput.trim()
+                            if (cleanPass.length < 4) {
                                 com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
-                                errorText = "Incorrect Step 2 2FA PIN."
-                            } else {
+                                errorText = "Please enter your Security Password."
+                                return@Button
+                            }
+                            val passOk = when {
+                                onVerifyAppPassword != null -> onVerifyAppPassword(cleanPass)
+                                expectedAppPassword.isNotBlank() -> cleanPass == expectedAppPassword
+                                else -> false
+                            } || onVerifyPin(cleanPass)
+                            if (passOk) {
                                 com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                onBiometricUnlockSuccess()
+                            } else {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "Incorrect Security Password."
                             }
                         } else {
-                            // Password matched and 2-step is disabled by user choice
-                            com.example.util.SoundAndHapticFeedback.playSuccess(context)
-                            onBiometricUnlockSuccess()
+                            val cleanCode = pinInput.trim()
+                            if (cleanCode.length < 4) {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "Enter the 4-digit code shown on your logged-in device (or your 4-digit PIN)."
+                                return@Button
+                            }
+                            if (cleanCode == generatedOtpCode || onVerifyPin(cleanCode)) {
+                                com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                onBiometricUnlockSuccess()
+                            } else {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "Invalid 4-digit code or PIN. Check your logged-in device or use Security Password fallback."
+                            }
                         }
                     },
                     shape = RoundedCornerShape(14.dp),
@@ -1015,13 +1139,33 @@ fun AppLockUnlockScreen(
                         .testTag("unlock_pin_button")
                 ) {
                     Text(
-                        if (isTwoStepRequired) "Verify 2-Step & Unlock" else "Verify Password & Unlock",
+                        if (usePasswordFallbackMode) "Unlock with Security Password" else "Verify 4-Digit Code & Login",
                         fontWeight = FontWeight.Bold
                     )
                 }
 
+                Spacer(modifier = Modifier.height(4.dp))
+
+                TextButton(
+                    onClick = {
+                        com.example.util.SoundAndHapticFeedback.playTap(context)
+                        usePasswordFallbackMode = !usePasswordFallbackMode
+                        errorText = null
+                    }
+                ) {
+                    Text(
+                        if (usePasswordFallbackMode) {
+                            "📲 Use 4-Digit Code from Logged-In Device Instead"
+                        } else {
+                            "🔑 Previous device unavailable? Use Security Password"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
                 if (isBiometricEnabled) {
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = { triggerHardwareBiometric() },
                         modifier = Modifier.fillMaxWidth()
@@ -1363,8 +1507,19 @@ fun MandatoryPhotoRegistrationScreen(
 fun AccountStatusGateScreen(
     profile: UserProfile,
     isDeviceBanned: Boolean,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    myAccessRequests: List<com.example.data.model.AccessRequest> = emptyList(),
+    onSubmitUnbanAppeal: (appealReason: String) -> Unit = {}
 ) {
+    val context = LocalContext.current
+    var appealReason by remember {
+        mutableStateOf("Banned by mistake — requesting a second chance to access Trading Zone.")
+    }
+    var localAppealSubmitted by remember { mutableStateOf(false) }
+    val hasPendingUnbanAppeal = remember(myAccessRequests, localAppealSubmitted) {
+        localAppealSubmitted || myAccessRequests.any { it.isUnbanAppealRequest() && it.status == "PENDING" }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1382,6 +1537,7 @@ fun AccountStatusGateScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -1405,7 +1561,7 @@ fun AccountStatusGateScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = if (isDeviceBanned) {
-                        "Your account (${profile.email}) and hardware Device ID (${profile.deviceId}) have been suspended by Admin Atharva Garg for policy violations."
+                        "Your account (${profile.email}) and hardware Device ID (${profile.deviceId}) were suspended. If this happened by mistake, you can request a Second Chance Unban from Admin below."
                     } else {
                         "Thank you, ${profile.fullName}. Your photo and profile details have been submitted. Your workspace will unlock automatically once Admin approves your account."
                     },
@@ -1413,6 +1569,60 @@ fun AccountStatusGateScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
+
+                if (isDeviceBanned) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "🙏 Banned by Mistake? Request a Second Chance",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            if (hasPendingUnbanAppeal) {
+                                Text(
+                                    text = "✅ Your Second-Chance Unban Request has been sent to Admin! Once Admin clicks 'Unban & Give 2nd Chance', your screen will unlock automatically.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textAlign = TextAlign.Center
+                                )
+                            } else {
+                                OutlinedTextField(
+                                    value = appealReason,
+                                    onValueChange = { appealReason = it },
+                                    label = { Text("Note to Admin for Second Chance") },
+                                    minLines = 2,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("unban_appeal_reason_input")
+                                )
+                                Button(
+                                    onClick = {
+                                        com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                        localAppealSubmitted = true
+                                        onSubmitUnbanAppeal(appealReason.trim())
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("request_unban_second_chance_button")
+                                ) {
+                                    Text("🙏 Request Unban / Second Chance", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(12.dp))
@@ -1433,3 +1643,106 @@ fun AccountStatusGateScreen(
         }
     }
 }
+
+@Composable
+fun CrossDeviceLoginCodeBanner(
+    pendingOtpRequests: List<com.example.data.model.AccessRequest>,
+    currentDeviceId: String,
+    onApproveOtpRequest: (com.example.data.model.AccessRequest) -> Unit
+) {
+    val context = LocalContext.current
+    var dismissedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val activeOtpRequest = remember(pendingOtpRequests, currentDeviceId, dismissedIds) {
+        pendingOtpRequests.firstOrNull { req ->
+            req.status == "PENDING" &&
+                req.isCrossDeviceLoginOtpRequest() &&
+                req.deviceId != currentDeviceId &&
+                !dismissedIds.contains(req.id) &&
+                !pendingOtpRequests.any { ack ->
+                    ack.utrReference.startsWith("LOGIN_OTP_ACK|${req.extractCrossDeviceLoginOtpCode()}")
+                }
+        }
+    }
+
+    AnimatedVisibility(
+        visible = activeOtpRequest != null,
+        enter = fadeIn(),
+        exit = fadeOut()
+    ) {
+        activeOtpRequest?.let { otpReq ->
+            val code = otpReq.extractCrossDeviceLoginOtpCode()
+            val model = otpReq.extractCrossDeviceLoginModel()
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .border(
+                        width = 1.5.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                    .testTag("cross_device_login_otp_banner")
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📲 New Device Login • 4-Digit Code: $code",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        ) {
+                            Text(
+                                text = code,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Device '$model' is trying to sign in. Enter code $code on that device or tap Approve below for instant login:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                com.example.util.SoundAndHapticFeedback.playTradeSignal(context, "BUY")
+                                dismissedIds = dismissedIds + otpReq.id
+                                onApproveOtpRequest(otpReq)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("approve_cross_device_otp_button")
+                        ) {
+                            Text("✅ Approve Login ($code)", fontWeight = FontWeight.Bold)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                dismissedIds = dismissedIds + otpReq.id
+                            }
+                        ) {
+                            Text("Dismiss")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

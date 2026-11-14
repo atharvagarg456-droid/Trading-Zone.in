@@ -224,6 +224,16 @@ class SecurityPreferences(context: Context) {
         prefs.edit().putString("installed_firmware_stamp", stamp.trim()).apply()
     }
 
+    fun isDeviceTrustedForQuickLogin(userId: String, deviceId: String): Boolean {
+        if (userId.isBlank() || deviceId.isBlank()) return false
+        return prefs.getBoolean("trusted_device_login_${userId}_${deviceId}", false)
+    }
+
+    fun setDeviceTrustedForQuickLogin(userId: String, deviceId: String, trusted: Boolean) {
+        if (userId.isBlank() || deviceId.isBlank()) return
+        prefs.edit().putBoolean("trusted_device_login_${userId}_${deviceId}", trusted).apply()
+    }
+
     private fun sha256(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
         return digest.joinToString("") { "%02x".format(it) }

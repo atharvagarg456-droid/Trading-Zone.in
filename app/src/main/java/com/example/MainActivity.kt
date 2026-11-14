@@ -433,6 +433,17 @@ fun AuthenticatedTradingWorkspace(
                 Box(modifier = Modifier.padding(horizontal = 12.dp)) {
                     NoNetworkStatusBanner(isNetworkConnected = isNetworkConnected)
                 }
+
+                // Live Cross-Device 4-Digit Quick Login Code Banner on already-unlocked devices
+                if (isSessionUnlocked) {
+                    CrossDeviceLoginCodeBanner(
+                        pendingOtpRequests = myAccessRequests,
+                        currentDeviceId = viewModel.deviceId,
+                        onApproveOtpRequest = { req ->
+                            viewModel.approveCrossDeviceLoginOtp(req)
+                        }
+                    )
+                }
             }
         },
         bottomBar = {
@@ -528,7 +539,12 @@ fun AuthenticatedTradingWorkspace(
                             viewModel.recoverPinWithSecurityAnswer(answer, newPin)
                         },
                         onBiometricUnlockSuccess = { viewModel.unlockViaBiometricSuccess() },
-                        onSignOut = signOutAction
+                        onSignOut = signOutAction,
+                        myAccessRequests = myAccessRequests,
+                        currentDeviceId = viewModel.deviceId,
+                        onRequestCrossDeviceOtp = { code4Digit ->
+                            viewModel.requestCrossDeviceLoginOtp(code4Digit)
+                        }
                     )
                 }
                 !hasCompletedRegistration -> {
@@ -560,7 +576,11 @@ fun AuthenticatedTradingWorkspace(
                         AccountStatusGateScreen(
                             profile = profile,
                             isDeviceBanned = isDeviceBanned,
-                            onSignOut = signOutAction
+                            onSignOut = signOutAction,
+                            myAccessRequests = myAccessRequests,
+                            onSubmitUnbanAppeal = { reason ->
+                                viewModel.submitUnbanAppeal(reason)
+                            }
                         )
                     }
                 }

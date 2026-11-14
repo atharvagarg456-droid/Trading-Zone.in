@@ -672,7 +672,38 @@ data class AccessRequest(
     val adminEmails: List<String> = listOf(PRIMARY_ADMIN_EMAIL),
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
-)
+) {
+    fun isCrossDeviceLoginOtpRequest(): Boolean {
+        return requestType == "ADMIN_WEB_AUTH" && utrReference.startsWith("LOGIN_OTP|")
+    }
+
+    fun extractCrossDeviceLoginOtpCode(): String {
+        if (!isCrossDeviceLoginOtpRequest()) return ""
+        return utrReference.removePrefix("LOGIN_OTP|").split("|").firstOrNull()?.trim().orEmpty()
+    }
+
+    fun extractCrossDeviceLoginModel(): String {
+        if (!isCrossDeviceLoginOtpRequest()) return deviceId
+        val parts = utrReference.removePrefix("LOGIN_OTP|").split("|")
+        return parts.getOrNull(1)?.trim()?.ifBlank { deviceId } ?: deviceId
+    }
+
+    fun isUnbanAppealRequest(): Boolean {
+        return requestType == "ADMIN_WEB_AUTH" && utrReference.startsWith("UNBAN_APPEAL|")
+    }
+
+    fun extractUnbanAppealReason(): String {
+        if (!isUnbanAppealRequest()) return ""
+        return utrReference.removePrefix("UNBAN_APPEAL|").trim()
+            .ifBlank { "Banned by mistake — requesting a second chance to access Trading Zone." }
+    }
+
+    fun isAdminWebAuthOnly(): Boolean {
+        return requestType == "ADMIN_WEB_AUTH" &&
+            !isCrossDeviceLoginOtpRequest() &&
+            !isUnbanAppealRequest()
+    }
+}
 
 @IgnoreExtraProperties
 data class CommunityReview(
