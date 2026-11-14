@@ -16,13 +16,15 @@ if (!rootKeystoreFile.exists() && rootKeystoreBase64File.exists()) {
     }
 }
 
-// Automatically sync docs/index.html into app/src/main/assets/apple_webapp.html so the Android app can share the standalone Apple Web App file directly
+// Automatically sync docs/index.html into root index.html and app/src/main/assets/apple_webapp.html so Chrome, Safari, GitHub Pages (/ and /docs), and Android Local HTTP Server stay 100% synced
 val webIndexFile = file("docs/index.html")
+val rootWebIndexFile = file("index.html")
 val bundledAppleWebAppAsset = file("app/src/main/assets/apple_webapp.html")
 if (webIndexFile.exists()) {
     runCatching {
         bundledAppleWebAppAsset.parentFile?.mkdirs()
         webIndexFile.copyTo(bundledAppleWebAppAsset, overwrite = true)
+        webIndexFile.copyTo(rootWebIndexFile, overwrite = true)
     }
 }
 

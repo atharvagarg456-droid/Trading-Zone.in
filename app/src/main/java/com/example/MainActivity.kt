@@ -46,11 +46,13 @@ import com.example.data.model.AppThemePreference
 import com.example.data.model.BroadcastMessage
 import com.example.data.repository.TradingRepository
 import com.example.service.TradingBackgroundService
+import com.example.ui.components.MandatoryFirmwareUpdateScreen
 import com.example.ui.components.NotificationHelper
 import com.example.ui.components.PermanentQrAndShareCard
 import com.example.ui.screens.*
 import com.example.ui.theme.TradingTheme
 import com.example.ui.viewmodel.TradingViewModel
+import com.example.util.SoundAndHapticFeedback
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -127,62 +129,76 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            TradingTheme(themePreference = themePref) {
-                val activeUser = currentUser
-                if (activeUser == null) {
-                    GoogleSignInWelcomeScreen(
-                        deviceId = deviceId,
-                        ipAddress = ipAddress,
-                        isNetworkConnected = isNetworkConnected,
-                        onAuthSuccess = {
-                            currentUser = Firebase.auth.currentUser
-                        }
-                    )
-                } else {
-                    val vm: TradingViewModel = viewModel(
-                        key = "vm_${activeUser.uid}",
-                        factory = object : ViewModelProvider.Factory {
-                            @Suppress("UNCHECKED_CAST")
-                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                return TradingViewModel(
-                                    repository = repository,
-                                    securityPreferences = securityPrefs,
-                                    currentUserId = activeUser.uid,
-                                    currentUserEmail = activeUser.email.orEmpty(),
-                                    currentUserDisplayName = activeUser.displayName.orEmpty(),
-                                    deviceId = deviceId,
-                                    deviceModel = deviceModel,
-                                    ipAddress = ipAddress,
-                                    networkConnectivityFlow = NetworkMonitor.observeNetworkConnectivity(appContext),
-                                    onNewOrEditedMessageAlert = { msg ->
-                                        NotificationHelper.showBroadcastNotification(
-                                            context = appContext,
-                                            isEdited = msg.isEdited
-                                        )
-                                    },
-                                    onCyclePaymentReminderAlert = { isExpired, daysLeft ->
-                                        NotificationHelper.showCyclePaymentReminderNotification(
-                                            context = appContext,
-                                            isExpired = isExpired,
-                                            daysLeft = daysLeft
-                                        )
-                                    }
-                                ) as T
-                            }
-                        }
-                    )
+            var showStartupSplash by remember { mutableStateOf(true) }
 
-                    AuthenticatedTradingWorkspace(
-                        viewModel = vm,
-                        themePreference = themePref,
-                        onChangeTheme = { newTheme ->
-                            securityPrefs.setThemePreference(newTheme)
-                            themePref = newTheme
-                        },
-                        onSignedOut = {
-                            TradingBackgroundService.stop(appContext)
-                            currentUser = null
-                        }
+            TradingTheme(themePreference = themePref) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    val activeUser = currentUser
+                    if (activeUser == null) {
+                        GoogleSignInWelcomeScreen(
+                            deviceId = deviceId,
+                            ipAddress = ipAddress,
+                            isNetworkConnected = isNetworkConnected,
+                            onAuthSuccess = {
+                                currentUser = Firebase.auth.currentUser
+                            }
+                        )
+                    } else {
+                        val vm: TradingViewModel = viewModel(
+                            key = "vm_${activeUser.uid}",
+                            factory = object : ViewModelProvider.Factory {
+                                @Suppress("UNCHECKED_CAST")
+                                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                    return TradingViewModel(
+                                        repository = repository,
+                                        securityPreferences = securityPrefs,
+                                        currentUserId = activeUser.uid,
+                                        currentUserEmail = activeUser.email.orEmpty(),
+                                        currentUserDisplayName = activeUser.displayName.orEmpty(),
+                                        deviceId = deviceId,
+                                        deviceModel = deviceModel,
+                                        ipAddress = ipAddress,
+                                        networkConnectivityFlow = NetworkMonitor.observeNetworkConnectivity(appContext),
+                                        onNewOrEditedMessageAlert = { msg ->
+                                            val sig = msg.resolvedSignalType()
+                                            if (sig.isNotBlank()) {
+                                                SoundAndHapticFeedback.playTradeSignal(appContext, sig)
+                                            }
+                                            NotificationHelper.showBroadcastNotification(
+                                                context = appContext,
+                                                isEdited = msg.isEdited
+                                            )
+                                        },
+                                        onCyclePaymentReminderAlert = { isExpired, daysLeft ->
+                                            NotificationHelper.showCyclePaymentReminderNotification(
+                                                context = appContext,
+                                                isExpired = isExpired,
+                                                daysLeft = daysLeft
+                                            )
+                                        }
+                                    ) as T
+                                }
+                            }
+                        )
+
+                        AuthenticatedTradingWorkspace(
+                            viewModel = vm,
+                            themePreference = themePref,
+                            onChangeTheme = { newTheme ->
+                                securityPrefs.setThemePreference(newTheme)
+                                themePref = newTheme
+                            },
+                            onSignedOut = {
+                                TradingBackgroundService.stop(appContext)
+                                currentUser = null
+                            }
+                        )
+                    }
+
+                    // Ultrasound Startup Splash Animation with Premium Logo
+                    com.example.ui.components.TradingZoneStartupSplashOverlay(
+                        visible = showStartupSplash,
+                        onSplashFinished = { showStartupSplash = false }
                     )
                 }
             }
@@ -221,6 +237,7 @@ fun AuthenticatedTradingWorkspace(
     val isAdmin by viewModel.isUserAdmin.collectAsStateWithLifecycle()
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
     val deviceRecord by viewModel.deviceRecord.collectAsStateWithLifecycle()
+    val myDevices by viewModel.myDevices.collectAsStateWithLifecycle()
     val broadcastMessages by viewModel.broadcastMessages.collectAsStateWithLifecycle()
     val openedMessageIds by viewModel.openedMessageIds.collectAsStateWithLifecycle()
     val allMessageReadReceipts by viewModel.allMessageReadReceiptsForAdmin.collectAsStateWithLifecycle()
@@ -232,8 +249,10 @@ fun AuthenticatedTradingWorkspace(
     val adminSettings by viewModel.adminSettings.collectAsStateWithLifecycle()
     val myAccessRequests by viewModel.myAccessRequests.collectAsStateWithLifecycle()
     val allUsersForAdmin by viewModel.allUsersForAdmin.collectAsStateWithLifecycle()
+    val allDevicesForAdmin by viewModel.allDevicesForAdmin.collectAsStateWithLifecycle()
     val allAccessRequestsForAdmin by viewModel.allAccessRequestsForAdmin.collectAsStateWithLifecycle()
     val moderationAlertsForAdmin by viewModel.moderationAlertsForAdmin.collectAsStateWithLifecycle()
+    val installedFirmwareStamp by viewModel.installedFirmwareStamp.collectAsStateWithLifecycle()
     val statusMessage by viewModel.statusMessage.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
 
@@ -263,7 +282,23 @@ fun AuthenticatedTradingWorkspace(
     val isDeviceBanned = deviceRecord?.isBanned == true || userProfile?.accountStatus == "BANNED"
     val hasCompletedRegistration = userProfile != null && userProfile?.fullName?.isNotBlank() == true
     val isApprovedMember = isAdmin || userProfile?.accountStatus == "APPROVED"
-    val showMainTabs = isAppLockSetupComplete && isSessionUnlocked && !isDeviceBanned && hasCompletedRegistration && isApprovedMember
+    val maxAllowedDevices = userProfile?.maxDevicesLimit(pricingConfig.defaultMaxDevicesPerUser()) ?: 2
+    val activeUnbannedDevices = remember(myDevices) { myDevices.filter { !it.isBanned } }
+    val isDeviceLimitExceeded = !isAdmin &&
+        activeUnbannedDevices.size > maxAllowedDevices &&
+        activeUnbannedDevices.take(maxAllowedDevices).none { it.deviceId == viewModel.deviceId }
+
+    val firmwareConfig = remember(pricingConfig) { pricingConfig.firmwareConfig() }
+    val requiresMandatoryFirmwareUpdate = firmwareConfig.enabled &&
+        installedFirmwareStamp != firmwareConfig.uniqueVersionStamp()
+
+    val showMainTabs = isAppLockSetupComplete &&
+        isSessionUnlocked &&
+        !isDeviceBanned &&
+        !isDeviceLimitExceeded &&
+        !requiresMandatoryFirmwareUpdate &&
+        hasCompletedRegistration &&
+        isApprovedMember
 
     val signOutAction: () -> Unit = {
         performGoogleSignOut(
@@ -280,12 +315,11 @@ fun AuthenticatedTradingWorkspace(
                 TopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.TrendingUp,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
+                            com.example.ui.components.TradingZonePremiumLogo(
+                                size = 34.dp,
+                                animated = true
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
                                     text = "Trading Zone",
@@ -304,6 +338,7 @@ fun AuthenticatedTradingWorkspace(
                         // 1-Tap Look-Changer UI Theme Switcher in TopAppBar
                         IconButton(
                             onClick = {
+                                com.example.util.SoundAndHapticFeedback.playTap(context)
                                 val entries = AppThemePreference.entries
                                 val nextIdx = (entries.indexOf(themePreference) + 1) % entries.size
                                 onChangeTheme(entries[nextIdx])
@@ -319,7 +354,10 @@ fun AuthenticatedTradingWorkspace(
 
                         // Quick Permanent QR & Share Website/App button for Apple & Android devices
                         IconButton(
-                            onClick = { showQuickQrShareDialog = true },
+                            onClick = {
+                                com.example.util.SoundAndHapticFeedback.playTap(context)
+                                showQuickQrShareDialog = true
+                            },
                             modifier = Modifier.testTag("top_bar_share_qr_button")
                         ) {
                             Icon(
@@ -405,28 +443,40 @@ fun AuthenticatedTradingWorkspace(
                 ) {
                     NavigationBarItem(
                         selected = selectedTab == MainNavTab.STREAM,
-                        onClick = { selectedTab = MainNavTab.STREAM },
+                        onClick = {
+                            com.example.util.SoundAndHapticFeedback.playTap(context)
+                            selectedTab = MainNavTab.STREAM
+                        },
                         icon = { Icon(Icons.Default.Campaign, contentDescription = "Messages") },
                         label = { Text("Messages") },
                         modifier = Modifier.testTag("nav_stream")
                     )
                     NavigationBarItem(
                         selected = selectedTab == MainNavTab.COMMODITY,
-                        onClick = { selectedTab = MainNavTab.COMMODITY },
+                        onClick = {
+                            com.example.util.SoundAndHapticFeedback.playTap(context)
+                            selectedTab = MainNavTab.COMMODITY
+                        },
                         icon = { Icon(Icons.Default.Forum, contentDescription = "Commodity") },
                         label = { Text("Commodity") },
                         modifier = Modifier.testTag("nav_reviews")
                     )
                     NavigationBarItem(
                         selected = selectedTab == MainNavTab.MEMBERSHIP,
-                        onClick = { selectedTab = MainNavTab.MEMBERSHIP },
+                        onClick = {
+                            com.example.util.SoundAndHapticFeedback.playTap(context)
+                            selectedTab = MainNavTab.MEMBERSHIP
+                        },
                         icon = { Icon(Icons.Default.QrCode2, contentDescription = "Plans") },
                         label = { Text("Plans") },
                         modifier = Modifier.testTag("nav_membership")
                     )
                     NavigationBarItem(
                         selected = selectedTab == MainNavTab.SETTINGS,
-                        onClick = { selectedTab = MainNavTab.SETTINGS },
+                        onClick = {
+                            com.example.util.SoundAndHapticFeedback.playTap(context)
+                            selectedTab = MainNavTab.SETTINGS
+                        },
                         icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
                         label = { Text("Settings") },
                         modifier = Modifier.testTag("nav_settings")
@@ -434,7 +484,10 @@ fun AuthenticatedTradingWorkspace(
                     if (isAdmin) {
                         NavigationBarItem(
                             selected = selectedTab == MainNavTab.ADMIN,
-                            onClick = { selectedTab = MainNavTab.ADMIN },
+                            onClick = {
+                                com.example.util.SoundAndHapticFeedback.playTap(context)
+                                selectedTab = MainNavTab.ADMIN
+                            },
                             icon = { Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin") },
                             label = { Text("Admin") },
                             modifier = Modifier.testTag("nav_admin")
@@ -454,6 +507,7 @@ fun AuthenticatedTradingWorkspace(
                 !isAppLockSetupComplete -> {
                     AppLockSetupScreen(
                         userEmail = viewModel.currentUserEmail,
+                        isAdmin = isAdmin,
                         onCompleteSetup = { pin, bio, question, answer ->
                             viewModel.completeInitialAppLockSetup(pin, bio, question, answer)
                         },
@@ -463,10 +517,12 @@ fun AuthenticatedTradingWorkspace(
                 !isSessionUnlocked -> {
                     AppLockUnlockScreen(
                         userEmail = viewModel.currentUserEmail,
+                        isAdmin = isAdmin,
+                        isTwoStepEnabled = if (isAdmin) true else (userProfile?.isTwoStepEnabled() ?: false),
                         isBiometricEnabled = isBiometricEnabled,
-                        securityQuestion = localSecurityQuestion.ifBlank {
-                            userProfile?.securityQuestion ?: "What is my favorite commodity or stock?"
-                        },
+                        securityQuestion = userProfile?.displaySecurityQuestion()?.ifBlank { localSecurityQuestion }
+                            ?: localSecurityQuestion.ifBlank { "What is my favorite commodity or stock?" },
+                        onVerifyAppPassword = { viewModel.verifyAppPassword(it) },
                         onVerifyPin = { viewModel.verifyPinAndUnlock(it) },
                         onRecoverPin = { answer, newPin ->
                             viewModel.recoverPinWithSecurityAnswer(answer, newPin)
@@ -507,6 +563,96 @@ fun AuthenticatedTradingWorkspace(
                             onSignOut = signOutAction
                         )
                     }
+                }
+                isDeviceLimitExceeded -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            shape = RoundedCornerShape(22.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFFF59E0B)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "📱 Maximum Login Devices Reached (${activeUnbannedDevices.size} / $maxAllowedDevices)",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFF59E0B)
+                                )
+                                Text(
+                                    text = "Your account is currently set to allow a maximum of $maxAllowedDevices active device(s). Sign out or block one of your older logged-in devices below to continue on this mobile:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                activeUnbannedDevices.forEach { dev ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = dev.deviceModel.ifBlank { "Logged-In Device" },
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "ID: ${dev.deviceId} • IP: ${dev.ipAddress}",
+                                                    style = MaterialTheme.typography.labelSmall
+                                                )
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    com.example.util.SoundAndHapticFeedback.playTap(context)
+                                                    viewModel.removeDeviceSession(dev.deviceId)
+                                                }
+                                            ) {
+                                                Text("Sign Out")
+                                            }
+                                        }
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = signOutAction,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Sign Out of This Device Instead")
+                                }
+                            }
+                        }
+                    }
+                }
+                requiresMandatoryFirmwareUpdate -> {
+                    MandatoryFirmwareUpdateScreen(
+                        firmwareConfig = firmwareConfig,
+                        isAdmin = isAdmin,
+                        onApplyUpdateNow = {
+                            viewModel.applyMandatoryFirmwareUpdateNow()
+                        },
+                        onAdminDisableGate = if (isAdmin) {
+                            {
+                                viewModel.pushAdminFirmwareToAllDevices(
+                                    enabled = false,
+                                    versionName = firmwareConfig.versionName,
+                                    releaseNotes = firmwareConfig.releaseNotes
+                                )
+                            }
+                        } else {
+                            null
+                        }
+                    )
                 }
                 else -> {
                     if (selectedTab != MainNavTab.STREAM) {
@@ -651,6 +797,9 @@ fun AuthenticatedTradingWorkspace(
                                     },
                                     onBulkExtendSubscribers = { extraDays ->
                                         viewModel.bulkExtendActiveSubscribers(extraDays)
+                                    },
+                                    onApplyDailyMessageLimit = { newLimit ->
+                                        viewModel.applyDailyMessageLimitNow(newLimit)
                                     }
                                 )
                             }
@@ -658,6 +807,8 @@ fun AuthenticatedTradingWorkspace(
                                 SettingsScreen(
                                     userProfile = userProfile,
                                     isAdmin = isAdmin,
+                                    currentDeviceId = viewModel.deviceId,
+                                    myDevices = myDevices,
                                     appleWebAppUrl = appleWebAppUrl,
                                     androidApkShareUrl = androidApkShareUrl,
                                     onUpdateShareUrls = { appleUrl, androidUrl ->
@@ -684,6 +835,15 @@ fun AuthenticatedTradingWorkspace(
                                     onToggleLargeTextMode = { viewModel.setLargeTextMode(it) },
                                     onUpdatePin = { cur, next -> viewModel.updateAppLockPin(cur, next) },
                                     onUpdateSecurityQuestion = { q, a -> viewModel.updateSecurityQuestionAndAnswer(q, a) },
+                                    onUpdateSecurityPreferences = { newPass, twoStepEn, maxDev ->
+                                        viewModel.updateMySecurityPreferences(newPass, twoStepEn, maxDev)
+                                    },
+                                    onToggleDeviceBlocked = { devId, blocked ->
+                                        viewModel.toggleSingleDeviceBlocked(devId, blocked)
+                                    },
+                                    onRemoveDeviceSession = { devId ->
+                                        viewModel.removeDeviceSession(devId)
+                                    },
                                     onRequestProfileEdit = { name, phone, city, photo ->
                                         viewModel.requestProfileEdit(name, phone, city, photo)
                                     },
@@ -749,6 +909,27 @@ fun AuthenticatedTradingWorkspace(
                                     },
                                     onClearUnpinnedCommodityMessages = {
                                         viewModel.clearUnpinnedCommodityMessages()
+                                    },
+                                    isPrimaryMainAdmin = viewModel.isPrimaryMainAdmin,
+                                    allDevices = allDevicesForAdmin,
+                                    broadcastMessages = broadcastMessages,
+                                    onApproveAdminWebLoginWithPassword = { req, approve, mainPass ->
+                                        viewModel.approveAdminWebLoginWithPassword(req, approve, mainPass)
+                                    },
+                                    onAdminUpdateUserDeviceLimit = { u, limit ->
+                                        viewModel.adminUpdateUserDeviceLimit(u, limit)
+                                    },
+                                    onToggleSingleDeviceBlocked = { devId, blocked ->
+                                        viewModel.toggleSingleDeviceBlocked(devId, blocked)
+                                    },
+                                    onRemoveDeviceSession = { devId ->
+                                        viewModel.removeDeviceSession(devId)
+                                    },
+                                    onPushAdminFirmwareToAllDevices = { enabled, ver, notes ->
+                                        viewModel.pushAdminFirmwareToAllDevices(enabled, ver, notes)
+                                    },
+                                    onApplyDailyMessageLimit = { newLimit ->
+                                        viewModel.applyDailyMessageLimitNow(newLimit)
                                     }
                                 )
                             }

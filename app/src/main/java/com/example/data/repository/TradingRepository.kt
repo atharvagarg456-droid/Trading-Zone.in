@@ -391,7 +391,8 @@ class TradingRepository(private val db: FirebaseFirestore) {
     suspend fun touchUserPresence(
         userId: String,
         ipAddress: String,
-        deviceModel: String
+        deviceModel: String,
+        deviceId: String = ""
     ): Result<Unit> = runCatching {
         val currentUid = requireUserId()
         if (currentUid != userId) return@runCatching
@@ -406,6 +407,36 @@ class TradingRepository(private val db: FirebaseFirestore) {
                 )
             ).await()
         } catch (_: Exception) {
+        }
+        if (deviceId.isNotBlank()) {
+            try {
+                val devRef = db.collection("device_registry").document(deviceId)
+                val snap = devRef.get().await()
+                if (!snap.exists()) {
+                    devRef.set(
+                        mapOf(
+                            "deviceId" to deviceId.take(128),
+                            "ipAddress" to ipAddress.ifBlank { "0.0.0.0" }.take(100),
+                            "deviceModel" to deviceModel.ifBlank { "Android Device" }.take(120),
+                            "boundUserId" to userId,
+                            "trialClaimed" to false,
+                            "isBanned" to false,
+                            "createdAt" to FieldValue.serverTimestamp(),
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    ).await()
+                } else {
+                    devRef.update(
+                        mapOf(
+                            "ipAddress" to ipAddress.ifBlank { "0.0.0.0" }.take(100),
+                            "deviceModel" to deviceModel.ifBlank { "Android Device" }.take(120),
+                            "boundUserId" to userId,
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    ).await()
+                }
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -1144,7 +1175,8 @@ class TradingRepository(private val db: FirebaseFirestore) {
         instrumentText: String,
         roiPercent: String,
         isProfit: Boolean,
-        noteText: String
+        noteText: String,
+        linkedBroadcastTitle: String = ""
     ): Result<String> = runCatching {
         val uid = requireUserId()
         val ref = db.collection("community_reviews").document()
@@ -1153,7 +1185,13 @@ class TradingRepository(private val db: FirebaseFirestore) {
         val cleanRoi = roiPercent.replace("|", " ").trim().ifBlank { "+18.4%" }.take(12)
         val pFlag = if (isProfit) "1" else "0"
         val topicTag = "PROFIT_CARD|$cleanAmount|$cleanInst|$cleanRoi|$pFlag".take(80)
-        val authorName = profile?.fullName?.ifBlank { "Atharva Garg (Owner)" } ?: "Atharva Garg (Owner)"
+        val authorName = profile?.fullName?.ifBlank { "Official Trade Desk" } ?: "Official Trade Desk"
+        val cleanBroadcast = linkedBroadcastTitle.replace("|", " ").trim()
+        val cardHeadline = if (cleanBroadcast.isNotBlank()) {
+            ((if (isProfit) "Trade Signal Profit" else "Trade Signal Update") + " • $cleanBroadcast").take(200)
+        } else {
+            ((if (isProfit) "Trade Signal Profit" else "Trade Signal Update") + " • $cleanInst").take(200)
+        }
         try {
             ref.set(
                 mapOf(
@@ -1161,11 +1199,11 @@ class TradingRepository(private val db: FirebaseFirestore) {
                     "userName" to authorName.take(120),
                     "userPhotoBase64" to (profile?.photoBase64 ?: "").take(450000),
                     "tradeMessageId" to "owner_pnl_feed",
-                    "tradeMessageTitle" to (if (isProfit) "Today's Verified Profit" else "Today's Trade Update") + " • $cleanInst",
+                    "tradeMessageTitle" to cardHeadline,
                     "tradeRiskLevel" to "LOW",
                     "topicTag" to topicTag,
                     "publicContent" to noteText.trim().ifBlank {
-                        "Verified Owner Trade Book Update: $cleanAmount ($cleanRoi) on $cleanInst"
+                        "Broadcast Trade Call Result: $cleanAmount ($cleanRoi) on $cleanInst"
                     }.take(2000),
                     "rating" to 5,
                     "hasBlurredWords" to false,
@@ -1180,6 +1218,112 @@ class TradingRepository(private val db: FirebaseFirestore) {
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, ref.path)
+            throw e
+        }
+    }
+
+    fun observeDevicesForUser(userId: String): Flow<List<DeviceRecord>> = flow {
+        val path = "device_registry"
+        emitAll(
+            db.collection("device_registry")
+                .whereEqualTo("boundUserId", userId)
+                .snapshots()
+                .map { snap ->
+                    snap.toObjects(DeviceRecord::class.java)
+                        .sortedByDescending { it.updatedAt ?: it.createdAt ?: Timestamp(0, 0) }
+                }
+                .catch { error ->
+                    val fsErr = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (fsErr == null && error is CancellationException) throw error
+                    val ex = fsErr ?: (error as? Exception)
+                    if (ex != null && auth.currentUser?.uid == userId) {
+                        handleFirestoreError(ex, OperationType.LIST, path)
+                    }
+                    throw error
+                }
+        )
+    }
+
+    fun observeAllDevicesForAdmin(): Flow<List<DeviceRecord>> = flow {
+        val uid = requireUserId()
+        val path = "device_registry"
+        emitAll(
+            db.collection("device_registry")
+                .snapshots()
+                .map { snap ->
+                    snap.toObjects(DeviceRecord::class.java)
+                        .sortedByDescending { it.updatedAt ?: it.createdAt ?: Timestamp(0, 0) }
+                }
+                .catch { error ->
+                    val fsErr = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (fsErr == null && error is CancellationException) throw error
+                    val ex = fsErr ?: (error as? Exception)
+                    if (ex != null && auth.currentUser?.uid == uid) {
+                        handleFirestoreError(ex, OperationType.LIST, path)
+                    }
+                    throw error
+                }
+        )
+    }
+
+    suspend fun setSingleDeviceBlockedStatus(
+        deviceId: String,
+        blocked: Boolean
+    ): Result<Unit> = runCatching {
+        requireUserId()
+        val ref = db.collection("device_registry").document(deviceId)
+        try {
+            ref.update(
+                mapOf(
+                    "isBanned" to blocked,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, ref.path)
+            throw e
+        }
+    }
+
+    suspend fun removeDeviceSession(deviceId: String): Result<Unit> = runCatching {
+        requireUserId()
+        val ref = db.collection("device_registry").document(deviceId)
+        try {
+            ref.delete().await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, ref.path)
+            throw e
+        }
+    }
+
+    suspend fun updateUserSecurityMetadata(
+        targetUserId: String,
+        encodedSecurityQuestion: String,
+        newAppLockPin: String? = null
+    ): Result<Unit> = runCatching {
+        requireUserId()
+        val ref = db.collection("users").document(targetUserId)
+        val updates = mutableMapOf<String, Any>(
+            "securityQuestion" to encodedSecurityQuestion.trim().take(300),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        if (!newAppLockPin.isNullOrBlank()) {
+            updates["appLockPin"] = newAppLockPin.trim().take(20)
+        }
+        try {
+            ref.update(updates).await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, ref.path)
             throw e
         }
     }
@@ -1399,7 +1543,7 @@ class TradingRepository(private val db: FirebaseFirestore) {
                 )
             ).await()
 
-            if (approve) {
+            if (approve && request.requestType != "ADMIN_WEB_AUTH") {
                 val days = request.validityDays.coerceAtLeast(1L)
                 val nextValidUntil = System.currentTimeMillis() + days * 86_400_000L
                 val isTrial = request.requestType == "FREE_TRIAL_7D"
@@ -1606,7 +1750,7 @@ class TradingRepository(private val db: FirebaseFirestore) {
             "dailyReviewLimitPerUser" to dailyReviewLimitPerUser.coerceIn(1L, 500L),
             "commodityChatLocked" to commodityChatLocked,
             "trialDays" to trialDays.coerceIn(1L, 30L),
-            "benefits" to benefits.map { it.trim().take(200) }.filter { it.isNotBlank() }.take(10),
+            "benefits" to benefits.map { it.trim().take(290) }.filter { it.isNotBlank() }.take(25),
             "updatedAt" to FieldValue.serverTimestamp()
         )
         try {

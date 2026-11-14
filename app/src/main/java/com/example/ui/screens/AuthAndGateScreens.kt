@@ -304,22 +304,12 @@ fun GoogleSignInWelcomeScreen(
             ) {
                 NoNetworkStatusBanner(isNetworkConnected = isNetworkConnected)
 
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(72.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Trading Zone Security",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-                }
+                com.example.ui.components.TradingZonePremiumLogo(
+                    size = 88.dp,
+                    animated = true
+                )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
                     text = "Trading Zone",
@@ -436,6 +426,7 @@ fun GoogleSignInWelcomeScreen(
 @Composable
 fun AppLockSetupScreen(
     userEmail: String,
+    isAdmin: Boolean = false,
     onCompleteSetup: (
         pin: String,
         enableBiometric: Boolean,
@@ -444,6 +435,11 @@ fun AppLockSetupScreen(
     ) -> Unit,
     onSignOut: () -> Unit
 ) {
+    val context = LocalContext.current
+    var appPassword by remember { mutableStateOf("") }
+    var confirmAppPassword by remember { mutableStateOf("") }
+    var enableTwoStepVerification by remember { mutableStateOf(isAdmin) }
+    var maxDevicesLimit by remember { mutableStateOf(if (isAdmin) 3 else 2) }
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var securityQuestion by remember { mutableStateOf("What is my favorite commodity or stock?") }
@@ -471,8 +467,21 @@ fun AppLockSetupScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(24.dp)
             ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = "🔒 ACCOUNT PASSWORD & OPTIONAL 2-STEP AUTH",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Set Up App Lock Security",
+                    text = "Create Account Password",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
@@ -482,38 +491,151 @@ fun AppLockSetupScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Like Instagram, an Account Password is required so nobody can log in with just your email. You can also optionally enable 2-Step Verification (Step 2 App PIN) and choose your Max Login Devices limit.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(modifier = Modifier.height(14.dp))
 
                 OutlinedTextField(
-                    value = pin,
-                    onValueChange = { if (it.length <= 8) pin = it.filter { ch -> ch.isDigit() } },
-                    label = { Text("Create 4 to 8 Digit App PIN") },
+                    value = appPassword,
+                    onValueChange = { appPassword = it; errorText = null },
+                    label = { Text("Account Password (Required • Min 6 chars)") },
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("setup_pin_input")
+                        .testTag("setup_app_password_input")
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
-                    value = confirmPin,
-                    onValueChange = { if (it.length <= 8) confirmPin = it.filter { ch -> ch.isDigit() } },
-                    label = { Text("Confirm App PIN") },
+                    value = confirmAppPassword,
+                    onValueChange = { confirmAppPassword = it; errorText = null },
+                    label = { Text("Confirm Account Password") },
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("setup_confirm_pin_input")
+                        .testTag("setup_confirm_app_password_input")
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isAdmin) "2-Step Verification (Mandatory for Admin)" else "Enable 2-Step Verification (Optional)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Step 1: Account Password • Step 2: 4–8 Digit App PIN",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = enableTwoStepVerification || isAdmin,
+                                onCheckedChange = {
+                                    if (!isAdmin) {
+                                        enableTwoStepVerification = it
+                                    }
+                                }
+                            )
+                        }
+
+                        if (enableTwoStepVerification || isAdmin) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            OutlinedTextField(
+                                value = pin,
+                                onValueChange = { if (it.length <= 8) pin = it.filter { ch -> ch.isDigit() } },
+                                label = { Text("Step 2: Create 4 to 8 Digit 2FA PIN") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("setup_pin_input")
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = confirmPin,
+                                onValueChange = { if (it.length <= 8) confirmPin = it.filter { ch -> ch.isDigit() } },
+                                label = { Text("Confirm 4 to 8 Digit 2FA PIN") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("setup_confirm_pin_input")
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Max Login Devices Allowed on Your Account",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Limit how many mobile/web devices can log into your account simultaneously.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf(1, 2, 3, 5).forEach { limitOpt ->
+                                val selected = maxDevicesLimit == limitOpt
+                                OutlinedButton(
+                                    onClick = { maxDevicesLimit = limitOpt },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text(
+                                        text = if (selected) "✓ ${limitOpt}x" else "${limitOpt}x",
+                                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium,
+                                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
                 OutlinedTextField(
                     value = securityQuestion,
                     onValueChange = { securityQuestion = it },
-                    label = { Text("Write Your Custom Security Question (For Forgot PIN)") },
+                    label = { Text("Custom Security Question (For Password Recovery)") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("setup_security_question_input")
@@ -524,7 +646,7 @@ fun AppLockSetupScreen(
                 OutlinedTextField(
                     value = securityAnswer,
                     onValueChange = { securityAnswer = it },
-                    label = { Text("Your Secret Answer") },
+                    label = { Text("Your Secret Recovery Answer") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("setup_security_answer_input")
@@ -539,7 +661,8 @@ fun AppLockSetupScreen(
                 ) {
                     Text(
                         text = "Enable Fingerprint / Face Biometric Unlock",
-                        style = MaterialTheme.typography.bodyMedium
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
                     )
                     Switch(
                         checked = enableBiometric,
@@ -560,12 +683,44 @@ fun AppLockSetupScreen(
 
                 Button(
                     onClick = {
+                        val cleanPass = appPassword.trim()
+                        val twoStepActive = enableTwoStepVerification || isAdmin
                         when {
-                            pin.length < 4 -> errorText = "PIN must be at least 4 digits."
-                            pin != confirmPin -> errorText = "PIN and Confirm PIN do not match."
-                            securityQuestion.isBlank() -> errorText = "Please enter a custom security question."
-                            securityAnswer.isBlank() -> errorText = "Please enter an answer for your security question."
-                            else -> onCompleteSetup(pin, enableBiometric, securityQuestion.trim(), securityAnswer.trim())
+                            cleanPass.length < 6 -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "Account Password must be at least 6 characters."
+                            }
+                            cleanPass != confirmAppPassword.trim() -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "Account Password and Confirm Password do not match."
+                            }
+                            twoStepActive && pin.length < 4 -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "2-Step PIN must be at least 4 digits."
+                            }
+                            twoStepActive && pin != confirmPin -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "2-Step PIN and Confirm PIN do not match."
+                            }
+                            securityQuestion.isBlank() -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "Please enter a custom security question."
+                            }
+                            securityAnswer.isBlank() -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "Please enter an answer for your security question."
+                            }
+                            else -> {
+                                com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                val effectivePin = if (twoStepActive) pin.trim() else "0000"
+                                val encodedQuestionWithPass = UserProfile.encodeSecurityMetadata(
+                                    password = cleanPass,
+                                    twoStepEnabled = twoStepActive,
+                                    maxDevicesLimit = maxDevicesLimit,
+                                    plainQuestion = securityQuestion
+                                )
+                                onCompleteSetup(effectivePin, enableBiometric, encodedQuestionWithPass, securityAnswer.trim())
+                            }
                         }
                     },
                     shape = RoundedCornerShape(14.dp),
@@ -574,7 +729,10 @@ fun AppLockSetupScreen(
                         .height(50.dp)
                         .testTag("complete_pin_setup_button")
                 ) {
-                    Text("Save App Lock & Continue")
+                    Text(
+                        if (enableTwoStepVerification || isAdmin) "Save Password + 2-Step Verification" else "Save Password & Continue",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -592,19 +750,36 @@ fun AppLockSetupScreen(
 @Composable
 fun AppLockUnlockScreen(
     userEmail: String,
+    isAdmin: Boolean = false,
+    isTwoStepEnabled: Boolean = false,
     isBiometricEnabled: Boolean,
     securityQuestion: String,
+    onVerifyAppPassword: ((String) -> Boolean)? = null,
     onVerifyPin: (String) -> Boolean,
     onRecoverPin: (answer: String, newPin: String) -> Boolean,
     onBiometricUnlockSuccess: () -> Unit,
     onSignOut: () -> Unit
 ) {
     val context = LocalContext.current
+    var passwordInput by remember { mutableStateOf("") }
     var pinInput by remember { mutableStateOf("") }
     var errorText by remember { mutableStateOf<String?>(null) }
     var showRecoveryDialog by remember { mutableStateOf(false) }
     var recoveryAnswer by remember { mutableStateOf("") }
     var recoveryNewPin by remember { mutableStateOf("") }
+
+    val dummyProfile = remember(securityQuestion) {
+        UserProfile(securityQuestion = securityQuestion)
+    }
+    val expectedAppPassword = remember(securityQuestion) {
+        dummyProfile.extractAppPassword()
+    }
+    val isTwoStepRequired = remember(securityQuestion, isAdmin, isTwoStepEnabled) {
+        isTwoStepEnabled || dummyProfile.isTwoStepEnabled(defaultForRole = isAdmin)
+    }
+    val displaySecurityQuestion = remember(securityQuestion) {
+        dummyProfile.displaySecurityQuestion()
+    }
 
     fun triggerHardwareBiometric() {
         val activity = context as? FragmentActivity ?: return
@@ -622,6 +797,7 @@ fun AppLockUnlockScreen(
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
+                    com.example.util.SoundAndHapticFeedback.playSuccess(context)
                     onBiometricUnlockSuccess()
                 }
             }
@@ -629,7 +805,7 @@ fun AppLockUnlockScreen(
         val info = BiometricPrompt.PromptInfo.Builder()
             .setTitle("Unlock Trading Zone")
             .setSubtitle(userEmail)
-            .setNegativeButtonText("Use App PIN")
+            .setNegativeButtonText("Use Account Password")
             .build()
         try {
             prompt.authenticate(info)
@@ -646,24 +822,24 @@ fun AppLockUnlockScreen(
     if (showRecoveryDialog) {
         AlertDialog(
             onDismissRequest = { showRecoveryDialog = false },
-            title = { Text("Forgot PIN Recovery") },
+            title = { Text("Account Password / 2FA Recovery") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Security Question: $securityQuestion",
+                        text = "Security Question: $displaySecurityQuestion",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     OutlinedTextField(
                         value = recoveryAnswer,
                         onValueChange = { recoveryAnswer = it },
-                        label = { Text("Your Security Answer") },
+                        label = { Text("Your Secret Recovery Answer") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = recoveryNewPin,
                         onValueChange = { if (it.length <= 8) recoveryNewPin = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("New 4–8 Digit App PIN") },
+                        label = { Text("New 4–8 Digit Security PIN") },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         modifier = Modifier.fillMaxWidth()
@@ -674,13 +850,15 @@ fun AppLockUnlockScreen(
                 Button(
                     onClick = {
                         if (onRecoverPin(recoveryAnswer, recoveryNewPin)) {
+                            com.example.util.SoundAndHapticFeedback.playSuccess(context)
                             showRecoveryDialog = false
                         } else {
+                            com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
                             errorText = "Incorrect security answer or invalid new PIN."
                         }
                     }
                 ) {
-                    Text("Reset PIN & Unlock")
+                    Text("Verify & Unlock")
                 }
             },
             dismissButton = {
@@ -717,42 +895,91 @@ fun AppLockUnlockScreen(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(44.dp)
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = if (isTwoStepRequired) {
+                            "🛡️ 2-STEP VERIFICATION ACTIVE"
+                        } else {
+                            "🔒 PASSWORD VERIFICATION REQUIRED"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Unlock Trading Zone",
+                    text = "Verify Account Login",
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
                 )
                 Text(
                     text = userEmail,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                OutlinedTextField(
-                    value = pinInput,
-                    onValueChange = {
-                        if (it.length <= 8) {
-                            pinInput = it.filter { ch -> ch.isDigit() }
+                val showPasswordBox = expectedAppPassword.isNotBlank() || onVerifyAppPassword != null
+                if (showPasswordBox) {
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = {
+                            passwordInput = it
                             errorText = null
-                        }
-                    },
-                    label = { Text("Enter App Lock PIN") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("unlock_pin_input")
-                )
+                        },
+                        label = {
+                            Text(
+                                if (isTwoStepRequired) "Step 1: Enter Account Password" else "Enter Account Password"
+                            )
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("unlock_app_password_input")
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                if (isTwoStepRequired || !showPasswordBox) {
+                    OutlinedTextField(
+                        value = pinInput,
+                        onValueChange = {
+                            if (it.length <= 8) {
+                                pinInput = it.filter { ch -> ch.isDigit() }
+                                errorText = null
+                            }
+                        },
+                        label = {
+                            Text(
+                                if (showPasswordBox) "Step 2: Enter 4–8 Digit 2FA PIN" else "Enter 4–8 Digit Security PIN"
+                            )
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("unlock_pin_input")
+                    )
+                }
 
                 if (!errorText.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = errorText!!,
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.error
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
                     )
                 }
 
@@ -760,8 +987,25 @@ fun AppLockUnlockScreen(
 
                 Button(
                     onClick = {
-                        if (!onVerifyPin(pinInput)) {
-                            errorText = "Incorrect App Lock PIN."
+                        val passOk = when {
+                            onVerifyAppPassword != null -> onVerifyAppPassword(passwordInput.trim())
+                            expectedAppPassword.isNotBlank() -> passwordInput.trim() == expectedAppPassword
+                            else -> true
+                        }
+                        if (!passOk) {
+                            com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                            errorText = "Incorrect Account Password."
+                        } else if (isTwoStepRequired || !showPasswordBox) {
+                            if (!onVerifyPin(pinInput)) {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                errorText = "Incorrect Step 2 2FA PIN."
+                            } else {
+                                com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                            }
+                        } else {
+                            // Password matched and 2-step is disabled by user choice
+                            com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                            onBiometricUnlockSuccess()
                         }
                     },
                     shape = RoundedCornerShape(14.dp),
@@ -770,7 +1014,10 @@ fun AppLockUnlockScreen(
                         .height(48.dp)
                         .testTag("unlock_pin_button")
                 ) {
-                    Text("Unlock Workspace")
+                    Text(
+                        if (isTwoStepRequired) "Verify 2-Step & Unlock" else "Verify Password & Unlock",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 if (isBiometricEnabled) {
@@ -790,7 +1037,7 @@ fun AppLockUnlockScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     TextButton(onClick = { showRecoveryDialog = true }) {
-                        Text("Forgot PIN?")
+                        Text("Forgot Password / PIN?")
                     }
                     TextButton(onClick = onSignOut) {
                         Text("Switch Account")
@@ -827,9 +1074,12 @@ fun MandatoryPhotoRegistrationScreen(
     var phoneNumber by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
     var photoBase64 by remember { mutableStateOf("") }
-    var securityQuestion by remember {
+    val existingMetaProfile = remember(initialSecurityQuestion) {
+        UserProfile(securityQuestion = initialSecurityQuestion)
+    }
+    var securityQuestion by remember(initialSecurityQuestion) {
         mutableStateOf(
-            initialSecurityQuestion.ifBlank { "What is my favorite commodity or stock?" }
+            existingMetaProfile.displaySecurityQuestion()
         )
     }
     var securityAnswer by remember { mutableStateOf("") }
@@ -1045,21 +1295,45 @@ fun MandatoryPhotoRegistrationScreen(
                 Button(
                     onClick = {
                         when {
-                            photoBase64.isBlank() -> localError = "Please upload or capture your profile photo."
-                            fullName.isBlank() -> localError = "Please enter your full name."
-                            phoneNumber.isBlank() -> localError = "Please enter your phone number."
-                            city.isBlank() -> localError = "Please enter your city."
-                            securityQuestion.isBlank() || securityAnswer.isBlank() ->
+                            photoBase64.isBlank() -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                localError = "Please upload or capture your profile photo."
+                            }
+                            fullName.isBlank() -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                localError = "Please enter your full name."
+                            }
+                            phoneNumber.isBlank() -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                localError = "Please enter your phone number."
+                            }
+                            city.isBlank() -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                localError = "Please enter your city."
+                            }
+                            securityQuestion.isBlank() || securityAnswer.isBlank() -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
                                 localError = "Please complete your custom security question and answer."
-                            !termsAccepted -> localError = "Please accept the Terms & Conditions."
+                            }
+                            !termsAccepted -> {
+                                com.example.util.SoundAndHapticFeedback.playAlertOrError(context)
+                                localError = "Please accept the Terms & Conditions."
+                            }
                             else -> {
+                                com.example.util.SoundAndHapticFeedback.playSuccess(context)
                                 localError = null
+                                val encodedSecurityQuestion = UserProfile.encodeSecurityMetadata(
+                                    password = existingMetaProfile.extractAppPassword(),
+                                    twoStepEnabled = existingMetaProfile.isTwoStepEnabled(false),
+                                    maxDevicesLimit = existingMetaProfile.maxDevicesLimit(2),
+                                    plainQuestion = securityQuestion.trim()
+                                )
                                 onSubmitRegistration(
                                     fullName.trim(),
                                     phoneNumber.trim(),
                                     city.trim(),
                                     photoBase64,
-                                    securityQuestion.trim(),
+                                    encodedSecurityQuestion,
                                     securityAnswer.trim(),
                                     true
                                 )

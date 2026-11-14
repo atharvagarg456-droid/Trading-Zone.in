@@ -14,6 +14,30 @@ class SecurityPreferences(context: Context) {
         return !prefs.getString("pin_hash_$userId", null).isNullOrBlank()
     }
 
+    fun saveAppPassword(userId: String, password: String) {
+        val clean = password.trim()
+        if (clean.isNotBlank()) {
+            prefs.edit()
+                .putString("app_pass_hash_$userId", sha256(clean))
+                .putString("app_pass_plain_$userId", clean)
+                .apply()
+        }
+    }
+
+    fun getPlainAppPassword(userId: String): String {
+        return prefs.getString("app_pass_plain_$userId", "") ?: ""
+    }
+
+    fun isAppPasswordConfigured(userId: String): Boolean {
+        return !prefs.getString("app_pass_hash_$userId", null).isNullOrBlank()
+    }
+
+    fun verifyAppPassword(userId: String, candidatePassword: String): Boolean {
+        val storedHash = prefs.getString("app_pass_hash_$userId", null)
+        if (storedHash.isNullOrBlank()) return true
+        return storedHash == sha256(candidatePassword.trim())
+    }
+
     fun savePin(userId: String, pin: String) {
         val clean = pin.trim()
         prefs.edit()
@@ -153,21 +177,21 @@ class SecurityPreferences(context: Context) {
     }
 
     fun getAppleWebAppUrl(): String {
-        val defaultUrl = "https://atharvagarg456-droid.github.io/Trading-Zone.in/"
+        val defaultUrl = "https://raw.githack.com/atharvagarg456-droid/Trading-Zone.in/main/docs/index.html"
         val raw = prefs.getString("apple_web_app_url", defaultUrl)
             ?.ifBlank { defaultUrl }
             ?: defaultUrl
-        return if (raw.contains("TradingCoLTD")) {
-            val migrated = raw.replace("TradingCoLTD", "Trading-Zone.in")
-            prefs.edit().putString("apple_web_app_url", migrated).apply()
-            migrated
-        } else {
-            raw
+        return when {
+            raw.contains("TradingCoLTD") || raw == "https://atharvagarg456-droid.github.io/Trading-Zone.in/" -> {
+                prefs.edit().putString("apple_web_app_url", defaultUrl).apply()
+                defaultUrl
+            }
+            else -> raw
         }
     }
 
     fun setAppleWebAppUrl(url: String) {
-        val clean = url.trim().ifBlank { "https://atharvagarg456-droid.github.io/Trading-Zone.in/" }
+        val clean = url.trim().ifBlank { "https://raw.githack.com/atharvagarg456-droid/Trading-Zone.in/main/docs/index.html" }
         prefs.edit().putString("apple_web_app_url", clean).apply()
     }
 
@@ -190,6 +214,14 @@ class SecurityPreferences(context: Context) {
             "https://github.com/atharvagarg456-droid/Trading-Zone.in/raw/main/Trading-Zone.apk"
         }
         prefs.edit().putString("android_apk_share_url", clean).apply()
+    }
+
+    fun getInstalledFirmwareStamp(): String {
+        return prefs.getString("installed_firmware_stamp", "") ?: ""
+    }
+
+    fun setInstalledFirmwareStamp(stamp: String) {
+        prefs.edit().putString("installed_firmware_stamp", stamp.trim()).apply()
     }
 
     private fun sha256(input: String): String {

@@ -4,10 +4,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Outer Gold Hexagonal Shield -->
     <path
-        android:fillColor="#10B981"
-        android:pathData="M28,68 L44,50 L56,58 L78,34 L82,38 L56,66 L44,58 L32,72 Z" />
+        android:fillColor="#FFD54F"
+        android:pathData="M54,18 L84,35 L84,73 L54,90 L24,73 L24,35 Z" />
+    <!-- Inner Deep Obsidian Navy Shield Core -->
     <path
-        android:fillColor="#3B82F6"
-        android:pathData="M66,34 L80,34 L80,48 L74,48 L74,40 L66,40 Z" />
+        android:fillColor="#081226"
+        android:pathData="M54,22 L80,37 L80,71 L54,86 L28,71 L28,37 Z" />
+    <!-- Ascending Institutional Candlesticks -->
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M37,54 L43,54 L43,69 L37,69 Z" />
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M50,45 L56,45 L56,69 L50,69 Z" />
+    <path
+        android:fillColor="#00E676"
+        android:pathData="M63,34 L69,34 L69,69 L63,69 Z" />
+    <!-- Dynamic Bullish Breakout Arrow -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M33,64 L49,48 L57,54 L73,35 L77,39 L57,62 L49,56 L37,68 Z" />
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M63,34 L77,34 L77,48 L71,48 L71,40 L63,40 Z" />
 </vector>

@@ -91,6 +91,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.model.AccessRequest
@@ -99,6 +100,7 @@ import com.example.data.model.PricingConfig
 import com.example.data.model.SubscriptionPlanOption
 import com.example.data.model.UserProfile
 import com.example.util.ImageBase64Util
+import com.example.util.SoundAndHapticFeedback
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -131,6 +133,7 @@ fun MembershipScreen(
     ) -> Unit = { _, _, _, _, _, _, _, _, _ -> },
     onDeletePlanInStudio: (SubscriptionPlanOption) -> Unit = {},
     onBulkExtendSubscribers: (Int) -> Unit = {},
+    onApplyDailyMessageLimit: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -139,6 +142,12 @@ fun MembershipScreen(
     var showBuyerPreviewForAdmin by rememberSaveable { mutableStateOf(false) }
     var editingPlanOption by remember { mutableStateOf<SubscriptionPlanOption?>(null) }
     var isAddingNewCustomPlan by remember { mutableStateOf(false) }
+    var applyPlansLiveToggle by rememberSaveable { mutableStateOf(true) }
+    var applyDailyLimitToggle by rememberSaveable { mutableStateOf(true) }
+    var dailyLimitInput by rememberSaveable(pricingConfig.dailyReviewLimitPerUser) {
+        mutableStateOf(pricingConfig.dailyReviewLimitPerUser.toString())
+    }
+    var localAppliedBanner by remember { mutableStateOf<String?>(null) }
 
     val availablePlans = remember(pricingConfig) { pricingConfig.availablePlans() }
     val allAdminPlans = remember(pricingConfig) { pricingConfig.allPlansForAdmin() }
@@ -391,92 +400,273 @@ fun MembershipScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(14.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
+                                        // Top Row: Badge + Live Status Pill + Toggle Switch (Never wraps unevenly)
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = if (plan.enabled) {
+                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                                    } else {
+                                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                                                    }
                                                 ) {
                                                     Text(
-                                                        text = plan.name,
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.ExtraBold
+                                                        text = if (plan.enabled) "ON • LIVE" else "OFF • HIDDEN",
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        color = if (plan.enabled) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.error
+                                                        }
                                                     )
+                                                }
+                                                if (plan.badge.isNotBlank()) {
                                                     Surface(
                                                         shape = RoundedCornerShape(6.dp),
-                                                        color = if (plan.enabled) {
-                                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                                                        } else {
-                                                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
-                                                        }
+                                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
                                                     ) {
                                                         Text(
-                                                            text = if (plan.enabled) "ON • LIVE" else "OFF • HIDDEN",
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                            text = plan.badge,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                                             style = MaterialTheme.typography.labelSmall,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = if (plan.enabled) {
-                                                                MaterialTheme.colorScheme.primary
-                                                            } else {
-                                                                MaterialTheme.colorScheme.error
-                                                            }
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            color = MaterialTheme.colorScheme.onSecondaryContainer
                                                         )
                                                     }
                                                 }
-                                                Text(
-                                                    text = "₹${plan.priceInr.toInt()} • ${plan.validityDays} Days Validity • ${plan.badge}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
                                             }
-
                                             Switch(
                                                 checked = plan.enabled,
                                                 onCheckedChange = { enabled ->
+                                                    SoundAndHapticFeedback.playClick(context)
                                                     onTogglePlanEnabled(plan, enabled)
                                                 },
                                                 modifier = Modifier.testTag("toggle_plan_${plan.id}")
                                             )
                                         }
 
+                                        // Middle Row: Plan Name on left, Tabular Price & Validity on right
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.End,
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .padding(end = 10.dp)
+                                            ) {
+                                                Text(
+                                                    text = plan.name,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "${plan.validityDays} Days Validity",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Text(
+                                                text = "₹${plan.priceInr.toInt()}",
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontWeight = FontWeight.Black,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+
+                                        // Bottom Row: Equal-width aligned action buttons
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             OutlinedButton(
-                                                onClick = { editingPlanOption = plan },
-                                                modifier = Modifier.testTag("edit_plan_${plan.id}"),
-                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                                onClick = {
+                                                    SoundAndHapticFeedback.playClick(context)
+                                                    editingPlanOption = plan
+                                                },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(40.dp)
+                                                    .testTag("edit_plan_${plan.id}"),
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                             ) {
-                                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Text("Edit Plan", style = MaterialTheme.typography.labelMedium)
+                                                Text(
+                                                    text = "Edit Plan",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
                                             }
-                                            Spacer(modifier = Modifier.width(8.dp))
                                             OutlinedButton(
-                                                onClick = { onDeletePlanInStudio(plan) },
-                                                modifier = Modifier.testTag("delete_plan_${plan.id}"),
+                                                onClick = {
+                                                    SoundAndHapticFeedback.playClick(context)
+                                                    onDeletePlanInStudio(plan)
+                                                },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(40.dp)
+                                                    .testTag("delete_plan_${plan.id}"),
+                                                shape = RoundedCornerShape(10.dp),
                                                 colors = ButtonDefaults.outlinedButtonColors(
                                                     contentColor = MaterialTheme.colorScheme.error
                                                 ),
-                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                             ) {
-                                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
-                                                    if (plan.isCustom) "Delete" else "Turn Off",
-                                                    style = MaterialTheme.typography.labelMedium
+                                                    text = if (plan.isCustom) "Delete Plan" else "Turn Off",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    softWrap = false
                                                 )
                                             }
                                         }
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+
+                            // EXPLICIT APPLY TOGGLE & BUTTON FOR PLANS + DAILY MESSAGE LIMIT
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.20f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "⚡ Apply Plan & Daily Limit Controls",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold
+                                            )
+                                            Text(
+                                                text = "Toggle ON & click Apply to broadcast updated Plans and Daily Message Limit to all devices",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked = applyPlansLiveToggle,
+                                            onCheckedChange = {
+                                                SoundAndHapticFeedback.playClick(context)
+                                                applyPlansLiveToggle = it
+                                            },
+                                            modifier = Modifier.testTag("apply_plans_live_toggle")
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedTextField(
+                                            value = dailyLimitInput,
+                                            onValueChange = { dailyLimitInput = it.filter { c -> c.isDigit() } },
+                                            label = { Text("Daily Msg Limit / User") },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag("membership_daily_limit_input"),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "Apply Limit",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Switch(
+                                                checked = applyDailyLimitToggle,
+                                                onCheckedChange = {
+                                                    SoundAndHapticFeedback.playClick(context)
+                                                    applyDailyLimitToggle = it
+                                                },
+                                                modifier = Modifier.testTag("apply_daily_limit_toggle")
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            SoundAndHapticFeedback.playTradeSignal(context, "TARGET HIT")
+                                            val parsedLimit = (dailyLimitInput.toLongOrNull() ?: pricingConfig.dailyReviewLimitPerUser)
+                                                .coerceIn(1L, 100L)
+                                            onApplyDailyMessageLimit(parsedLimit)
+                                            localAppliedBanner = "Applied ${availablePlans.size} Live Plans & $parsedLimit Messages/Day Limit across all devices!"
+                                        },
+                                        enabled = (applyPlansLiveToggle || applyDailyLimitToggle) && !isBusy,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .testTag("apply_plans_and_limit_button"),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Apply Plans & Daily Message Limit Now",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    if (localAppliedBanner != null) {
+                                        Text(
+                                            text = "✅ ${localAppliedBanner!!}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
                                     }
                                 }
                             }
@@ -675,7 +865,10 @@ fun MembershipScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(16.dp))
-                                                .clickable { selectedPlanId = planOption.id }
+                                                .clickable {
+                                                    SoundAndHapticFeedback.playClick(context)
+                                                    selectedPlanId = planOption.id
+                                                }
                                                 .testTag("select_${planOption.id}"),
                                             shape = RoundedCornerShape(16.dp),
                                             color = if (isSelected) {
@@ -692,50 +885,84 @@ fun MembershipScreen(
                                                 }
                                             )
                                         ) {
-                                            Row(
+                                            Column(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .padding(14.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                // Top Row: Badge Pill + Selected Indicator (Never wraps unevenly)
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                                    ) {
+                                                        Text(
+                                                            text = planOption.badge.ifBlank { "VIP Plan" },
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = if (isSelected) "● SELECTED" else "TAP TO SELECT",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        color = if (isSelected) {
+                                                            MaterialTheme.colorScheme.primary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                                        }
+                                                    )
+                                                }
+
+                                                // Bottom Row: Plan Name & Validity on Left, Price on Right
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .padding(end = 10.dp)
                                                     ) {
                                                         Text(
                                                             text = planOption.name,
-                                                            style = MaterialTheme.typography.titleSmall,
-                                                            fontWeight = FontWeight.ExtraBold
+                                                            style = MaterialTheme.typography.titleMedium,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
                                                         )
-                                                        Surface(
-                                                            shape = RoundedCornerShape(6.dp),
-                                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                                                        ) {
-                                                            Text(
-                                                                text = planOption.badge,
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                color = MaterialTheme.colorScheme.primary,
-                                                                fontWeight = FontWeight.Bold
-                                                            )
-                                                        }
+                                                        Spacer(modifier = Modifier.height(2.dp))
+                                                        Text(
+                                                            text = "${planOption.validityDays} Days Full Access",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            fontFamily = FontFamily.Monospace,
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
                                                     }
-                                                    Spacer(modifier = Modifier.height(2.dp))
                                                     Text(
-                                                        text = "${planOption.validityDays} Days Full Access",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        text = "₹${planOption.priceInr.toInt()}",
+                                                        style = MaterialTheme.typography.titleLarge,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        fontWeight = FontWeight.Black,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        color = MaterialTheme.colorScheme.primary
                                                     )
                                                 }
-                                                Text(
-                                                    text = "₹${planOption.priceInr.toInt()}",
-                                                    style = MaterialTheme.typography.titleLarge,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
                                             }
                                         }
                                     }

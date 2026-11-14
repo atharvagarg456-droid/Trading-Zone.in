@@ -28,16 +28,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
 import com.example.data.model.AppThemePreference
 import com.example.data.model.DEFAULT_TERMS_AND_CONDITIONS
+import com.example.data.model.DeviceRecord
 import com.example.data.model.UserProfile
 import com.example.ui.components.ImageCodecHelper
 import com.example.ui.components.PermanentQrAndShareCard
+import com.example.ui.components.SwipeableGalleryItem
+import com.example.ui.components.SwipeablePhotoAndProfileDialog
+import com.example.ui.components.toSwipeableGalleryItem
+import com.example.util.SoundAndHapticFeedback
 
 @Composable
 fun SettingsScreen(
     userProfile: UserProfile?,
     isAdmin: Boolean,
+    currentDeviceId: String = "",
+    myDevices: List<DeviceRecord> = emptyList(),
     appleWebAppUrl: String,
     androidApkShareUrl: String,
     onUpdateShareUrls: (appleUrl: String, androidUrl: String) -> Unit,
@@ -62,11 +70,16 @@ fun SettingsScreen(
     onToggleLargeTextMode: (Boolean) -> Unit,
     onUpdatePin: (currentPin: String, newPin: String) -> Boolean,
     onUpdateSecurityQuestion: (question: String, answer: String) -> Unit,
+    onUpdateSecurityPreferences: (newPassword: String?, twoStepEnabled: Boolean, maxDevicesLimit: Int) -> Unit = { _, _, _ -> },
+    onToggleDeviceBlocked: (deviceId: String, blocked: Boolean) -> Unit = { _, _ -> },
+    onRemoveDeviceSession: (deviceId: String) -> Unit = {},
     onRequestProfileEdit: (fullName: String, phone: String, city: String, photoBase64: String) -> Unit,
     onLockNow: () -> Unit,
     onSignOut: () -> Unit
 ) {
     val context = LocalContext.current
+    var soundFxEnabled by remember { mutableStateOf(SoundAndHapticFeedback.isSoundEnabled(context)) }
+    var hapticFxEnabled by remember { mutableStateOf(SoundAndHapticFeedback.isHapticEnabled(context)) }
 
     // Profile Edit Request State
     var editName by remember(userProfile?.fullName) { mutableStateOf(userProfile?.fullName ?: "") }
@@ -102,6 +115,43 @@ fun SettingsScreen(
 
     var showPinDialog by remember { mutableStateOf(false) }
     var showTermsDialog by remember { mutableStateOf(false) }
+    var showSwipeProfileViewer by remember { mutableStateOf(false) }
+
+    val profileGalleryItems = remember(userProfile, editPhotoBase64, myDevices) {
+        buildList {
+            if (userProfile != null) {
+                val activeCount = myDevices.count { !it.isBanned }.coerceAtLeast(1)
+                add(userProfile.toSwipeableGalleryItem(activeDevicesCount = activeCount))
+                if (userProfile.pendingPhotoBase64.isNotBlank() &&
+                    userProfile.pendingPhotoBase64 != userProfile.photoBase64
+                ) {
+                    add(
+                        SwipeableGalleryItem(
+                            id = "${userProfile.userId}_pending",
+                            title = "${userProfile.pendingFullName.ifBlank { userProfile.fullName }} (Pending Approval)",
+                            subtitle = userProfile.email,
+                            imageBase64OrUrl = userProfile.pendingPhotoBase64,
+                            badgeText = "PENDING PHOTO",
+                            details = listOf(
+                                "Requested Name" to userProfile.pendingFullName.ifBlank { userProfile.fullName },
+                                "Requested Phone" to userProfile.pendingPhoneNumber.ifBlank { userProfile.phoneNumber },
+                                "Requested City" to userProfile.pendingCity.ifBlank { userProfile.city }
+                            )
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    if (showSwipeProfileViewer && profileGalleryItems.isNotEmpty()) {
+        SwipeablePhotoAndProfileDialog(
+            items = profileGalleryItems,
+            initialIndex = 0,
+            dialogTitle = "Swipe Profile & Photos",
+            onDismiss = { showSwipeProfileViewer = false }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -119,32 +169,50 @@ fun SettingsScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (avatarBitmap != null) {
-                        Image(
-                            bitmap = avatarBitmap.asImageBitmap(),
-                            contentDescription = "Profile Photo",
-                            modifier = Modifier
-                                .size(58.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                            modifier = Modifier.size(58.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = "Avatar",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                    Box(
+                        modifier = Modifier
+                            .size(58.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                SoundAndHapticFeedback.playClick(context)
+                                showSwipeProfileViewer = true
+                            }
+                            .testTag("profile_avatar_swipe_button")
+                    ) {
+                        if (avatarBitmap != null) {
+                            Image(
+                                bitmap = avatarBitmap.asImageBitmap(),
+                                contentDescription = "Swipe Profile Photo",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = "Avatar",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }
                     Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                SoundAndHapticFeedback.playClick(context)
+                                showSwipeProfileViewer = true
+                            }
+                    ) {
                         Text(
                             text = userProfile?.fullName?.ifBlank { userProfile.email } ?: "Member",
                             style = MaterialTheme.typography.titleMedium,
@@ -155,13 +223,12 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (userProfile?.phoneNumber?.isNotBlank() == true) {
-                            Text(
-                                text = "${userProfile.phoneNumber} • ${userProfile.city}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = "👆 Tap to Swipe Profile & Photo",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                     OutlinedButton(
                         onClick = { showProfileEditor = !showProfileEditor },
@@ -488,6 +555,42 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("UI Sound Effects (Pro Terminal Audio)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Play crisp audio cues on taps, trade updates & alerts", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = soundFxEnabled,
+                        onCheckedChange = {
+                            soundFxEnabled = it
+                            SoundAndHapticFeedback.setSoundEnabled(context, it)
+                            if (it) SoundAndHapticFeedback.playTap(context)
+                        }
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Tactile Haptic Feedback", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Crisp vibration feedback on buttons, reactions & tab switches", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = hapticFxEnabled,
+                        onCheckedChange = {
+                            hapticFxEnabled = it
+                            SoundAndHapticFeedback.setHapticEnabled(context, it)
+                            if (it) SoundAndHapticFeedback.playTap(context)
+                        }
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text("Compact Message Cards", style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = compactFeedMode, onCheckedChange = onToggleCompactFeedMode)
                 }
@@ -498,6 +601,297 @@ fun SettingsScreen(
                 ) {
                     Text("Large Readable Typography", style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = largeTextMode, onCheckedChange = onToggleLargeTextMode)
+                }
+            }
+        }
+
+        // 3B. Where You're Logged In — Active Devices, Block Device & Max Devices Limit
+        val currentLimit = remember(userProfile?.securityQuestion) {
+            userProfile?.maxDevicesLimit(defaultLimit = 2) ?: 2
+        }
+        val currentTwoStep = remember(userProfile?.securityQuestion, isAdmin) {
+            if (isAdmin) true else (userProfile?.isTwoStepEnabled() ?: false)
+        }
+        var selectedMaxDevices by remember(currentLimit) { mutableIntStateOf(currentLimit) }
+        var twoStepToggle by remember(currentTwoStep) { mutableStateOf(currentTwoStep) }
+        var newAccountPassword by remember { mutableStateOf("") }
+        val activeNonBlockedCount = remember(myDevices) { myDevices.count { !it.isBanned } }
+
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.5.dp, Color(0xFF10B981).copy(alpha = 0.45f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("active_devices_security_card")
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Active Devices",
+                            tint = Color(0xFF10B981)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Where You're Logged In (Devices)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "See which mobile or web devices are logged into your account, block unfamiliar devices, or set your device limit.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (activeNonBlockedCount > selectedMaxDevices) {
+                            Color(0xFFEF4444).copy(alpha = 0.18f)
+                        } else {
+                            Color(0xFF10B981).copy(alpha = 0.18f)
+                        }
+                    ) {
+                        Text(
+                            text = "${activeNonBlockedCount.coerceAtLeast(1)} / $selectedMaxDevices Devices",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (activeNonBlockedCount > selectedMaxDevices) Color(0xFFEF4444) else Color(0xFF10B981)
+                        )
+                    }
+                }
+
+                // Max Login Devices Limit Selector
+                Text(
+                    text = "Maximum Login Devices Allowed for My Account:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(1, 2, 3, 5).forEach { limitOption ->
+                        FilterChip(
+                            selected = selectedMaxDevices == limitOption,
+                            onClick = {
+                                SoundAndHapticFeedback.playTap(context)
+                                selectedMaxDevices = limitOption
+                                onUpdateSecurityPreferences(null, twoStepToggle, limitOption)
+                            },
+                            label = {
+                                Text(if (limitOption == 1) "1 Device Only" else "$limitOption Devices")
+                            }
+                        )
+                    }
+                }
+
+                // List of Logged-In Mobile & Web Devices
+                if (myDevices.isEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${userProfile?.deviceModel?.ifBlank { "Android Mobile" } ?: "Current Mobile"} (THIS DEVICE)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981)
+                                )
+                                Text(
+                                    text = "ID: ${currentDeviceId.ifBlank { userProfile?.deviceId ?: "Active" }} • IP: ${userProfile?.ipAddress ?: "Online"}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFF10B981).copy(alpha = 0.2f)
+                            ) {
+                                Text(
+                                    text = "ACTIVE NOW",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF10B981)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    myDevices.forEach { dev ->
+                        val isThisDevice = dev.deviceId == currentDeviceId
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (dev.isBanned) {
+                                Color(0xFFEF4444).copy(alpha = 0.12f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                when {
+                                    dev.isBanned -> Color(0xFFEF4444).copy(alpha = 0.5f)
+                                    isThisDevice -> Color(0xFF10B981).copy(alpha = 0.6f)
+                                    else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                                }
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = buildString {
+                                                append(dev.deviceModel.ifBlank { "Mobile / Web Device" })
+                                                if (isThisDevice) append(" • THIS DEVICE")
+                                            },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (dev.isBanned) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Device ID: ${dev.deviceId} • IP: ${dev.ipAddress.ifBlank { "Verified" }}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = if (dev.isBanned) {
+                                            Color(0xFFEF4444).copy(alpha = 0.2f)
+                                        } else {
+                                            Color(0xFF10B981).copy(alpha = 0.2f)
+                                        }
+                                    ) {
+                                        Text(
+                                            text = if (dev.isBanned) "BLOCKED" else "ACTIVE",
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (dev.isBanned) Color(0xFFEF4444) else Color(0xFF10B981)
+                                        )
+                                    }
+                                }
+
+                                if (!isThisDevice || isAdmin) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                SoundAndHapticFeedback.playAlertOrError(context)
+                                                onToggleDeviceBlocked(dev.deviceId, !dev.isBanned)
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(if (dev.isBanned) "Unblock Device" else "Block Device")
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                SoundAndHapticFeedback.playTap(context)
+                                                onRemoveDeviceSession(dev.deviceId)
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Sign Out Device")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                // Instagram-Style Password + Optional 2-Step Verification Controls
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isAdmin) {
+                                "2-Step Verification (Mandatory for Admin)"
+                            } else {
+                                "Optional 2-Step Verification (Step 2 PIN)"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Require both your Account Password and your 4–8 digit Step 2 PIN when signing in",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = twoStepToggle,
+                        enabled = !isAdmin,
+                        onCheckedChange = { enabled ->
+                            SoundAndHapticFeedback.playTap(context)
+                            twoStepToggle = enabled
+                            onUpdateSecurityPreferences(null, enabled, selectedMaxDevices)
+                        }
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = newAccountPassword,
+                        onValueChange = { newAccountPassword = it },
+                        label = { Text("Update Account Password (min 6 chars)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = {
+                            if (newAccountPassword.trim().length >= 6) {
+                                SoundAndHapticFeedback.playSuccess(context)
+                                onUpdateSecurityPreferences(
+                                    newAccountPassword.trim(),
+                                    twoStepToggle,
+                                    selectedMaxDevices
+                                )
+                                newAccountPassword = ""
+                            } else {
+                                SoundAndHapticFeedback.playAlertOrError(context)
+                            }
+                        }
+                    ) {
+                        Text("Save")
+                    }
                 }
             }
         }
@@ -517,7 +911,7 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Current Security Question: ${securityQuestion.ifBlank { userProfile?.securityQuestion ?: "Not configured" }}",
+                    text = "Current Security Question: ${userProfile?.displaySecurityQuestion()?.ifBlank { securityQuestion } ?: securityQuestion.ifBlank { "Not configured" }}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -533,7 +927,10 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(
-                        onClick = { showPinDialog = true },
+                        onClick = {
+                            SoundAndHapticFeedback.playTap(context)
+                            showPinDialog = true
+                        },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("change_pin_button")
@@ -543,7 +940,10 @@ fun SettingsScreen(
                         Text("Change PIN")
                     }
                     Button(
-                        onClick = onLockNow,
+                        onClick = {
+                            SoundAndHapticFeedback.playTap(context)
+                            onLockNow()
+                        },
                         modifier = Modifier
                             .weight(1f)
                             .testTag("lock_app_now_button")

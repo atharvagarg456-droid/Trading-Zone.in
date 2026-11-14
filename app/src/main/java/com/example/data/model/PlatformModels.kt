@@ -60,12 +60,23 @@ data class TodayProfitBanner(
     val profitAmountText: String = amountText,
     val instrumentText: String = "MCX GOLD & SILVER",
     val instrumentName: String = instrumentText,
-    val roiPercent: String = "+18.4% Intraday",
+    val roiPercent: String = "+18.4% Trade Target",
     val roiText: String = roiPercent,
-    val noteText: String = "Institutional breakout targets achieved today",
+    val noteText: String = "As per Trade Broadcast call — all intraday targets achieved",
     val isProfit: Boolean = true,
-    val updatedAtMillis: Long = 0L
+    val updatedAtMillis: Long = 0L,
+    val linkedBroadcastTitle: String = "MCX Bullion Intraday Signal"
 )
+
+data class FirmwareUpdateConfig(
+    val enabled: Boolean = false,
+    val versionName: String = "v4.5.0-ULTRA-PRO-MAX",
+    val mandatoryForAll: Boolean = true,
+    val pushedAtMillis: Long = 0L,
+    val releaseNotes: String = "Mandatory Ultra Pro Max Firmware: Tiered VIP Broadcasts, Trade Signal Haptics & Chrome/Safari Engine"
+) {
+    fun uniqueVersionStamp(): String = "${versionName.trim()}_$pushedAtMillis"
+}
 
 @IgnoreExtraProperties
 data class UserProfile(
@@ -121,6 +132,64 @@ data class UserProfile(
     fun remainingReviewsToday(dailyLimit: Int): Int {
         return (dailyLimit - usedReviewsToday()).coerceAtLeast(0)
     }
+
+    fun extractAppPassword(): String {
+        val tokens = securityQuestion.split("|")
+        val passToken = tokens.firstOrNull { it.startsWith("__PASS__:") }
+        return passToken?.removePrefix("__PASS__:")?.trim().orEmpty()
+    }
+
+    fun isTwoStepEnabled(defaultForRole: Boolean = false): Boolean {
+        val tokens = securityQuestion.split("|")
+        val twoFaToken = tokens.firstOrNull { it.startsWith("__2FA__:") }
+            ?.removePrefix("__2FA__:")?.trim()
+        return when (twoFaToken?.lowercase(Locale.ROOT)) {
+            "true", "1" -> true
+            "false", "0" -> false
+            else -> defaultForRole
+        }
+    }
+
+    fun maxDevicesLimit(defaultLimit: Int = 2): Int {
+        val tokens = securityQuestion.split("|")
+        val devToken = tokens.firstOrNull { it.startsWith("__MAXDEV__:") }
+            ?.removePrefix("__MAXDEV__:")?.trim()?.toIntOrNull()
+        return (devToken ?: defaultLimit).coerceIn(1, 10)
+    }
+
+    fun displaySecurityQuestion(): String {
+        val tokens = securityQuestion.split("|")
+        val nonMeta = tokens.filterNot {
+            it.startsWith("__PASS__:") ||
+                it.startsWith("__2FA__:") ||
+                it.startsWith("__MAXDEV__:")
+        }
+        val joined = nonMeta.joinToString(" ").trim()
+        return joined.ifBlank { "What is your favorite trading instrument?" }
+    }
+
+    companion object {
+        fun encodeSecurityMetadata(
+            password: String,
+            twoStepEnabled: Boolean,
+            maxDevicesLimit: Int,
+            plainQuestion: String
+        ): String {
+            val cleanPass = password.replace("|", "").trim().take(60)
+            val cleanQ = plainQuestion.split("|")
+                .filterNot {
+                    it.startsWith("__PASS__:") ||
+                        it.startsWith("__2FA__:") ||
+                        it.startsWith("__MAXDEV__:")
+                }
+                .joinToString(" ")
+                .trim()
+                .ifBlank { "What is your favorite trading instrument?" }
+                .take(160)
+            val clampedMax = maxDevicesLimit.coerceIn(1, 10)
+            return "__PASS__:$cleanPass|__2FA__:$twoStepEnabled|__MAXDEV__:$clampedMax|$cleanQ".take(295)
+        }
+    }
 }
 
 @IgnoreExtraProperties
@@ -167,6 +236,93 @@ data class BroadcastMessage(
         if (replyToRiskLevel.equals("NONE", ignoreCase = true)) return false
         val clean = riskLevel.trim().uppercase(Locale.ROOT)
         return clean in listOf("LOW", "MEDIUM", "HIGH")
+    }
+
+    fun targetMembershipTier(): String {
+        val tokens = linkTitle.split("|")
+        val tierToken = tokens.firstOrNull { it.startsWith("__TIER__:") }
+            ?.removePrefix("__TIER__:")
+            ?.trim()
+        return if (tierToken.isNullOrBlank()) "ALL" else tierToken
+    }
+
+    fun signalHapticType(): String {
+        val tokens = linkTitle.split("|")
+        val sigToken = tokens.firstOrNull { it.startsWith("__SIG__:") }
+            ?.removePrefix("__SIG__:")
+            ?.trim()
+        return if (sigToken.isNullOrBlank()) "AUTO" else sigToken
+    }
+
+    fun resolvedSignalType(): String {
+        val explicit = signalHapticType().uppercase(Locale.ROOT)
+        if (explicit in listOf("BUY", "SELL", "TARGET HIT")) return explicit
+        val combined = "$title $content".uppercase(Locale.ROOT)
+        return when {
+            combined.contains("TARGET HIT") ||
+                combined.contains("TGT HIT") ||
+                combined.contains("TARGET ACHIEVED") ||
+                combined.contains("BOOK PROFIT") -> "TARGET HIT"
+            combined.contains("SELL") || combined.contains("SHORT") -> "SELL"
+            else -> "BUY"
+        }
+    }
+
+    fun displayLinkTitle(): String {
+        val tokens = linkTitle.split("|")
+        return tokens.filterNot {
+            it.startsWith("__TIER__:") || it.startsWith("__SIG__:")
+        }.joinToString(" ").trim()
+    }
+
+    fun targetTierDisplayLabel(): String {
+        return when (val tier = targetMembershipTier()) {
+            "ALL", "" -> "All Members"
+            "PAID_ONLY" -> "Paid Members Only"
+            "VIP_HIGH_TIER" -> "VIP High-Tier Plans Only"
+            else -> tier
+        }
+    }
+
+    fun isUserEligibleForTier(profile: UserProfile?, isAdmin: Boolean): Boolean {
+        if (isAdmin) return true
+        val tier = targetMembershipTier().trim()
+        if (tier.isEmpty() || tier.equals("ALL", ignoreCase = true)) return true
+        if (profile == null || !profile.isEntitledNow()) return false
+        return when (tier.uppercase(Locale.ROOT)) {
+            "PAID_ONLY" -> profile.entitlementStatus == "PAID_ACTIVE"
+            "VIP_HIGH_TIER" -> {
+                profile.entitlementStatus == "PAID_ACTIVE" &&
+                    !profile.activePlanName.contains("Trial", ignoreCase = true) &&
+                    !profile.activePlanName.contains("Monthly", ignoreCase = true)
+            }
+            else -> {
+                profile.entitlementStatus == "PAID_ACTIVE" &&
+                    (profile.activePlanName.equals(tier, ignoreCase = true) ||
+                        profile.activePlanName.contains(tier, ignoreCase = true))
+            }
+        }
+    }
+
+    companion object {
+        fun encodeLinkTitleWithMeta(
+            plainLinkTitle: String,
+            targetTier: String = "ALL",
+            signalType: String = "AUTO"
+        ): String {
+            val cleanTier = targetTier.replace("|", " ").trim().ifBlank { "ALL" }.take(50)
+            val cleanSig = signalType.replace("|", " ").trim().ifBlank { "AUTO" }.take(20)
+            val cleanTitle = plainLinkTitle.split("|")
+                .filterNot { it.startsWith("__TIER__:") || it.startsWith("__SIG__:") }
+                .joinToString(" ")
+                .trim()
+                .take(100)
+            return if (cleanTier == "ALL" && cleanSig == "AUTO") {
+                cleanTitle
+            } else {
+                "__TIER__:$cleanTier|__SIG__:$cleanSig|$cleanTitle".take(195)
+            }
+        }
     }
 }
 
@@ -269,17 +425,20 @@ data class PricingConfig(
     }
 
     fun todayProfitBanner(): TodayProfitBanner {
-        val meta = benefits.firstOrNull { it.startsWith("__META_PNL__:") }
-            ?: return TodayProfitBanner()
-        val parts = meta.removePrefix("__META_PNL__:").split("|")
+        val meta = benefits.firstOrNull {
+            it.startsWith("__META_PNL__:") || it.startsWith("__META_TODAY_PROFIT__:")
+        } ?: return TodayProfitBanner()
+        val cleanMeta = meta.removePrefix("__META_PNL__:").removePrefix("__META_TODAY_PROFIT__:")
+        val parts = cleanMeta.split("|")
         if (parts.size < 6) return TodayProfitBanner()
         val active = parts[0].toBooleanStrictOrNull() ?: true
         val amt = parts[1].ifBlank { "+₹48,500" }
         val inst = parts[2].ifBlank { "MCX GOLD & SILVER" }
-        val roi = parts[3].ifBlank { "+18.4% Today" }
-        val note = parts[4].ifBlank { "Institutional breakout targets achieved" }
-        val isProf = parts[5].toBooleanStrictOrNull() ?: true
+        val roi = parts[3].ifBlank { "+18.4% Trade Target" }
+        val note = parts[4].ifBlank { "As per Trade Broadcast call — targets achieved" }
+        val isProf = parts[5].toBooleanStrictOrNull() ?: (parts[5] != "0" && !amt.trim().startsWith("-"))
         val ts = parts.getOrNull(6)?.toLongOrNull() ?: 0L
+        val broadcastTitle = parts.getOrNull(7)?.ifBlank { inst } ?: inst
         return TodayProfitBanner(
             enabled = active,
             isActive = active,
@@ -291,14 +450,43 @@ data class PricingConfig(
             roiText = roi,
             noteText = note,
             isProfit = isProf,
-            updatedAtMillis = ts
+            updatedAtMillis = ts,
+            linkedBroadcastTitle = broadcastTitle
         )
     }
 
+    fun defaultMaxDevicesPerUser(): Int {
+        val meta = benefits.firstOrNull { it.startsWith("__META_DEVLIM__:") }
+        return meta?.removePrefix("__META_DEVLIM__:")?.trim()?.toIntOrNull()?.coerceIn(1, 10) ?: 2
+    }
+
     fun announcementTicker(): String {
-        val meta = benefits.firstOrNull { it.startsWith("__META_TICKER__:") }
-        return meta?.removePrefix("__META_TICKER__:")?.trim()
-            ?: "LIVE MARKET DESK • Instant Trade Broadcasts & Commodity P&L Stream Active"
+        val meta = benefits.firstOrNull {
+            it.startsWith("__META_TICKER__:") || it.startsWith("__META_ANNOUNCEMENT__:")
+        }
+        return meta?.removePrefix("__META_TICKER__:")?.removePrefix("__META_ANNOUNCEMENT__:")?.trim()
+            ?: "LIVE MARKET DESK • Instant Trade Broadcasts & Trade Signal P&L Stream Active"
+    }
+
+    fun firmwareConfig(): FirmwareUpdateConfig {
+        val meta = benefits.firstOrNull { it.startsWith("__META_FW__:") }
+            ?: return FirmwareUpdateConfig()
+        val parts = meta.removePrefix("__META_FW__:").split("|")
+        if (parts.size < 4) return FirmwareUpdateConfig()
+        val enabled = parts[0] == "1" || parts[0].equals("true", ignoreCase = true)
+        val versionName = parts[1].ifBlank { "v4.5.0-ULTRA-PRO-MAX" }
+        val mandatory = parts[2] != "0" && !parts[2].equals("false", ignoreCase = true)
+        val pushedAt = parts[3].toLongOrNull() ?: 0L
+        val notes = parts.getOrNull(4)?.ifBlank {
+            "Mandatory Ultra Pro Max Firmware Update pushed by Admin"
+        } ?: "Mandatory Ultra Pro Max Firmware Update pushed by Admin"
+        return FirmwareUpdateConfig(
+            enabled = enabled,
+            versionName = versionName,
+            mandatoryForAll = mandatory,
+            pushedAtMillis = pushedAt,
+            releaseNotes = notes
+        )
     }
 
     fun displayBenefits(): List<String> = publicBenefits()
@@ -412,36 +600,45 @@ data class PricingConfig(
             plan1Enabled: Boolean,
             customPlans: List<CustomPlanItem>,
             todayProfit: TodayProfitBanner,
-            announcementTicker: String
+            announcementTicker: String,
+            defaultMaxDevices: Int = 2,
+            firmwareConfig: FirmwareUpdateConfig = FirmwareUpdateConfig()
         ): List<String> {
             val result = mutableListOf<String>()
             result.add("__META_P1_EN__:$plan1Enabled")
+            result.add("__META_DEVLIM__:${defaultMaxDevices.coerceIn(1, 10)}")
+            val cleanFwVer = firmwareConfig.versionName.replace("|", " ").trim().ifBlank { "v4.5.0-ULTRA-PRO-MAX" }.take(36)
+            val cleanFwNotes = firmwareConfig.releaseNotes.replace("|", " ").replace("\n", " ").trim().take(120)
+            result.add(
+                "__META_FW__:${if (firmwareConfig.enabled) "1" else "0"}|$cleanFwVer|${if (firmwareConfig.mandatoryForAll) "1" else "0"}|${firmwareConfig.pushedAtMillis}|$cleanFwNotes".take(280)
+            )
             val cleanPnlAmount = todayProfit.amountText.replace("|", " ").take(28)
             val cleanInst = todayProfit.instrumentText.replace("|", " ").take(32)
             val cleanRoi = todayProfit.roiPercent.replace("|", " ").take(24)
-            val cleanNote = todayProfit.noteText.replace("|", " ").take(55)
+            val cleanNote = todayProfit.noteText.replace("|", " ").take(65)
+            val cleanBroadcast = todayProfit.linkedBroadcastTitle.replace("|", " ").take(45)
             result.add(
-                "__META_PNL__:${todayProfit.enabled}|$cleanPnlAmount|$cleanInst|$cleanRoi|$cleanNote|${todayProfit.isProfit}|${todayProfit.updatedAtMillis}".take(195)
+                "__META_PNL__:${todayProfit.enabled}|$cleanPnlAmount|$cleanInst|$cleanRoi|$cleanNote|${todayProfit.isProfit}|${todayProfit.updatedAtMillis}|$cleanBroadcast".take(280)
             )
             if (announcementTicker.isNotBlank()) {
-                result.add("__META_TICKER__:${announcementTicker.replace("\n", " ").take(160)}")
+                result.add("__META_TICKER__:${announcementTicker.replace("\n", " ").take(200)}")
             }
-            customPlans.take(5).forEach { cp ->
+            customPlans.take(8).forEach { cp ->
                 val safeId = cp.id.ifBlank { "cp_${System.currentTimeMillis()}" }.replace("|", "").take(20)
                 val safeName = cp.name.replace("|", " ").take(45)
                 val safeBadge = cp.badge.ifBlank { cp.badgeText }.replace("|", " ").take(20)
                 result.add(
-                    "__META_PLAN__:$safeId|$safeName|${cp.priceInr.toInt()}|${cp.validityDays}|${cp.enabled}|$safeBadge|${cp.qrOnlyMode}".take(195)
+                    "__META_PLAN__:$safeId|$safeName|${cp.priceInr.toInt()}|${cp.validityDays}|${cp.enabled}|$safeBadge|${cp.qrOnlyMode}".take(250)
                 )
             }
-            val remainingSlots = (10 - result.size).coerceAtLeast(0)
+            val remainingSlots = (25 - result.size).coerceAtLeast(0)
             displayBenefits
                 .filterNot { it.startsWith("__META_") }
-                .map { it.trim().take(190) }
+                .map { it.trim().take(240) }
                 .filter { it.isNotBlank() }
                 .take(remainingSlots)
                 .forEach { result.add(it) }
-            return result.take(10)
+            return result.take(25)
         }
     }
 }
@@ -465,7 +662,7 @@ data class AccessRequest(
     val userPhotoBase64: String = "",
     val deviceId: String = "",
     val ipAddress: String = "",
-    val requestType: String = "FREE_TRIAL_7D", // FREE_TRIAL_7D, PAID_UPI
+    val requestType: String = "FREE_TRIAL_7D", // FREE_TRIAL_7D, PAID_UPI, ADMIN_WEB_AUTH
     val planName: String = "7-Day Free Trial",
     val amountInr: Double = 0.0,
     val validityDays: Long = 7L,
@@ -512,7 +709,8 @@ data class CommunityReview(
             instrumentName = instrument,
             roiText = roi,
             noteText = publicContent,
-            isProfit = isProfit
+            isProfit = isProfit,
+            linkedBroadcastTitle = tradeMessageTitle.ifBlank { instrument }
         )
     }
 }

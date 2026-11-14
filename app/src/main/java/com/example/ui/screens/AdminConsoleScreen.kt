@@ -28,11 +28,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.style.TextOverflow
 import com.example.data.model.AccessRequest
 import com.example.data.model.AdminSettings
 import com.example.data.model.BroadcastMessage
 import com.example.data.model.CustomPlanItem
+import com.example.data.model.DeviceRecord
 import com.example.data.model.ModerationAlert
 import com.example.data.model.PricingConfig
 import com.example.data.model.TodayProfitBanner
@@ -40,6 +44,10 @@ import com.example.data.model.UserProfile
 import com.example.ui.components.ImageCodecHelper
 import com.example.ui.components.PermanentQrAndShareCard
 import com.example.ui.components.PhotoMarkingDialog
+import com.example.ui.components.SwipeableGalleryItem
+import com.example.ui.components.SwipeablePhotoAndProfileDialog
+import com.example.ui.components.toSwipeableGalleryItem
+import com.example.util.SoundAndHapticFeedback
 
 private val EmeraldColor = Color(0xFF10B981)
 private val AmberColor = Color(0xFFF59E0B)
@@ -128,8 +136,18 @@ fun AdminConsoleScreen(
     onRemoveCoAdminEmail: (String) -> Unit,
     onUpdateTodayProfitBannerAndCard: (TodayProfitBanner, Boolean) -> Unit = { _, _ -> },
     onBulkExtendSubscribers: (Int) -> Unit = {},
-    onClearUnpinnedCommodityMessages: () -> Unit = {}
+    onClearUnpinnedCommodityMessages: () -> Unit = {},
+    isPrimaryMainAdmin: Boolean = false,
+    allDevices: List<DeviceRecord> = emptyList(),
+    broadcastMessages: List<BroadcastMessage> = emptyList(),
+    onApproveAdminWebLoginWithPassword: (AccessRequest, Boolean, String) -> Boolean = { _, _, _ -> false },
+    onAdminUpdateUserDeviceLimit: (UserProfile, Int) -> Unit = { _, _ -> },
+    onToggleSingleDeviceBlocked: (String, Boolean) -> Unit = { _, _ -> },
+    onRemoveDeviceSession: (String) -> Unit = {},
+    onPushAdminFirmwareToAllDevices: (enabled: Boolean, versionName: String, releaseNotes: String) -> Unit = { _, _, _ -> },
+    onApplyDailyMessageLimit: (Long) -> Unit = {}
 ) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(editingMessageInit, replyingToMessageInit) {
@@ -160,14 +178,20 @@ fun AdminConsoleScreen(
         ) {
             Tab(
                 selected = selectedTab == 0,
-                onClick = { selectedTab = 0 },
+                onClick = {
+                    SoundAndHapticFeedback.playTap(context)
+                    selectedTab = 0
+                },
                 text = { Text("Publish Message") },
                 icon = { Icon(Icons.Default.Campaign, contentDescription = null) },
                 modifier = Modifier.testTag("admin_tab_publish")
             )
             Tab(
                 selected = selectedTab == 1,
-                onClick = { selectedTab = 1 },
+                onClick = {
+                    SoundAndHapticFeedback.playTap(context)
+                    selectedTab = 1
+                },
                 text = {
                     Text(
                         if (totalApprovalsBadge > 0) "Approvals ($totalApprovalsBadge)" else "Approvals"
@@ -178,7 +202,10 @@ fun AdminConsoleScreen(
             )
             Tab(
                 selected = selectedTab == 2,
-                onClick = { selectedTab = 2 },
+                onClick = {
+                    SoundAndHapticFeedback.playTap(context)
+                    selectedTab = 2
+                },
                 text = {
                     Text(
                         if (unresolvedAlerts.isNotEmpty()) "Alerts (${unresolvedAlerts.size})" else "Alerts"
@@ -189,14 +216,20 @@ fun AdminConsoleScreen(
             )
             Tab(
                 selected = selectedTab == 3,
-                onClick = { selectedTab = 3 },
-                text = { Text("Users (${allUsers.size})") },
+                onClick = {
+                    SoundAndHapticFeedback.playTap(context)
+                    selectedTab = 3
+                },
+                text = { Text("Users & Devices (${allUsers.size})") },
                 icon = { Icon(Icons.Default.People, contentDescription = null) },
                 modifier = Modifier.testTag("admin_tab_users")
             )
             Tab(
                 selected = selectedTab == 4,
-                onClick = { selectedTab = 4 },
+                onClick = {
+                    SoundAndHapticFeedback.playTap(context)
+                    selectedTab = 4
+                },
                 text = { Text("Plans & Controls") },
                 icon = { Icon(Icons.Default.Tune, contentDescription = null) },
                 modifier = Modifier.testTag("admin_tab_plans")
@@ -205,6 +238,7 @@ fun AdminConsoleScreen(
 
         when (selectedTab) {
             0 -> AdminPublishMessageTab(
+                pricingConfig = pricingConfig,
                 editingMessageInit = editingMessageInit,
                 replyingToMessageInit = replyingToMessageInit,
                 onClearEditingMessage = onClearEditingMessage,
@@ -213,12 +247,14 @@ fun AdminConsoleScreen(
                 onEditMessage = onEditMessage
             )
             1 -> AdminApprovalsTab(
+                isPrimaryMainAdmin = isPrimaryMainAdmin,
                 pendingRegistrations = pendingRegistrations,
                 pendingProfileEdits = pendingProfileEdits,
                 pendingRequests = pendingRequests,
                 onApproveUserAccount = onApproveUserAccount,
                 onReviewProfileEdit = onReviewProfileEdit,
-                onReviewAccessRequest = onReviewAccessRequest
+                onReviewAccessRequest = onReviewAccessRequest,
+                onApproveAdminWebLoginWithPassword = onApproveAdminWebLoginWithPassword
             )
             2 -> AdminModerationAlertsTab(
                 alerts = moderationAlerts,
@@ -229,15 +265,20 @@ fun AdminConsoleScreen(
             )
             3 -> AdminUsersInspectorTab(
                 allUsers = allUsers,
+                allDevices = allDevices,
                 onSetUserCommodityMuted = onSetUserCommodityMuted,
                 onResetUserDailyQuota = onResetUserDailyQuota,
                 onResetUserPin = onResetUserPin,
                 onUpdateUserSubscriptionDays = onUpdateUserSubscriptionDays,
-                onSetDeviceBanStatus = onSetDeviceBanStatus
+                onSetDeviceBanStatus = onSetDeviceBanStatus,
+                onAdminUpdateUserDeviceLimit = onAdminUpdateUserDeviceLimit,
+                onToggleSingleDeviceBlocked = onToggleSingleDeviceBlocked,
+                onRemoveDeviceSession = onRemoveDeviceSession
             )
             4 -> AdminPlansAndConfigTab(
                 pricingConfig = pricingConfig,
                 adminSettings = adminSettings,
+                broadcastMessages = broadcastMessages,
                 appleWebAppUrl = appleWebAppUrl,
                 androidApkShareUrl = androidApkShareUrl,
                 onUpdateShareUrls = onUpdateShareUrls,
@@ -246,7 +287,9 @@ fun AdminConsoleScreen(
                 onRemoveCoAdminEmail = onRemoveCoAdminEmail,
                 onUpdateTodayProfitBannerAndCard = onUpdateTodayProfitBannerAndCard,
                 onBulkExtendSubscribers = onBulkExtendSubscribers,
-                onClearUnpinnedCommodityMessages = onClearUnpinnedCommodityMessages
+                onClearUnpinnedCommodityMessages = onClearUnpinnedCommodityMessages,
+                onPushAdminFirmwareToAllDevices = onPushAdminFirmwareToAllDevices,
+                onApplyDailyMessageLimit = onApplyDailyMessageLimit
             )
         }
     }
@@ -254,6 +297,7 @@ fun AdminConsoleScreen(
 
 @Composable
 private fun AdminPublishMessageTab(
+    pricingConfig: PricingConfig,
     editingMessageInit: BroadcastMessage?,
     replyingToMessageInit: BroadcastMessage?,
     onClearEditingMessage: () -> Unit,
@@ -313,9 +357,28 @@ private fun AdminPublishMessageTab(
         mutableStateOf(editingMessageInit?.markedPhotoBase64 ?: "")
     }
     var linkUrl by remember(editingMessageInit) { mutableStateOf(editingMessageInit?.linkUrl ?: "") }
-    var linkTitle by remember(editingMessageInit) { mutableStateOf(editingMessageInit?.linkTitle ?: "") }
+    var linkTitle by remember(editingMessageInit) {
+        mutableStateOf(editingMessageInit?.displayLinkTitle() ?: "")
+    }
+    var selectedTargetTier by remember(editingMessageInit) {
+        mutableStateOf(editingMessageInit?.targetMembershipTier() ?: "ALL")
+    }
+    var selectedSignalType by remember(editingMessageInit) {
+        mutableStateOf(editingMessageInit?.signalHapticType() ?: "AUTO")
+    }
     var isPinned by remember(editingMessageInit) { mutableStateOf(editingMessageInit?.isPinned ?: false) }
     var showMarkupDialog by remember { mutableStateOf(false) }
+
+    val tierOptions = remember(pricingConfig) {
+        buildList {
+            add("ALL" to "👥 Send to All Members")
+            add("PAID_ONLY" to "💎 Paid Members Only (No Free Trial)")
+            add("VIP_HIGH_TIER" to "👑 VIP High-Tier Plans Only")
+            pricingConfig.allPlansForAdmin().forEach { plan ->
+                add(plan.name to "📋 ${plan.name} (₹${plan.priceInr.toInt()})")
+            }
+        }
+    }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -426,6 +489,113 @@ private fun AdminPublishMessageTab(
                 .testTag("admin_message_body_input")
         )
 
+        // TARGET MEMBERSHIP TIER SELECTOR ("Send to All" or "Select Membership Type")
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = AmberColor.copy(alpha = 0.10f),
+            border = BorderStroke(1.dp, AmberColor.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "👑 Target Membership Audience (Who Can Unlock This Signal)",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = AmberColor
+                )
+                Text(
+                    text = "Lower-priced or trial members outside your selected tier will see a Locked VIP Card prompting them to upgrade their plan.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    tierOptions.forEach { (tierKey, tierLabel) ->
+                        FilterChip(
+                            selected = selectedTargetTier == tierKey,
+                            onClick = {
+                                SoundAndHapticFeedback.playClick(context)
+                                selectedTargetTier = tierKey
+                            },
+                            label = {
+                                Text(
+                                    text = tierLabel,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            },
+                            modifier = Modifier.testTag("target_tier_chip_${tierKey.replace(" ", "_")}")
+                        )
+                    }
+                }
+            }
+        }
+
+        // TRADE SIGNAL HAPTIC & SOUND SEQUENCE SELECTOR (BUY / SELL / TARGET HIT)
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = EmeraldColor.copy(alpha = 0.10f),
+            border = BorderStroke(1.dp, EmeraldColor.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "🔊 Trade Signal Haptic & Sound Sequence (BUY / SELL / TARGET HIT)",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = EmeraldColor
+                )
+                Text(
+                    text = "Triggers a distinct vibration & audio chord sequence on Android and Website when members open this signal.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        "AUTO" to "⚡ Auto-Detect",
+                        "BUY" to "🟢 BUY Signal",
+                        "SELL" to "🔴 SELL Signal",
+                        "TARGET HIT" to "🎯 TARGET HIT"
+                    ).forEach { (sigKey, sigLabel) ->
+                        FilterChip(
+                            selected = selectedSignalType == sigKey,
+                            onClick = {
+                                selectedSignalType = sigKey
+                                if (sigKey != "AUTO") {
+                                    SoundAndHapticFeedback.playTradeSignal(context, sigKey)
+                                } else {
+                                    SoundAndHapticFeedback.playClick(context)
+                                }
+                            },
+                            label = {
+                                Text(
+                                    text = sigLabel,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            },
+                            modifier = Modifier.testTag("signal_haptic_chip_${sigKey.replace(" ", "_")}")
+                        )
+                    }
+                }
+            }
+        }
+
         Text(
             "Category (Optional — select None to hide badge)",
             style = MaterialTheme.typography.labelLarge,
@@ -533,6 +703,21 @@ private fun AdminPublishMessageTab(
         Button(
             onClick = {
                 if (title.isBlank() || content.isBlank()) return@Button
+                val encodedLinkTitle = BroadcastMessage.encodeLinkTitleWithMeta(
+                    plainLinkTitle = linkTitle.trim(),
+                    targetTier = selectedTargetTier,
+                    signalType = selectedSignalType
+                )
+                val resolvedSignal = if (selectedSignalType == "AUTO") {
+                    SoundAndHapticFeedback.detectSignalType(title, content)
+                } else {
+                    selectedSignalType
+                }
+                if (resolvedSignal.isNotBlank()) {
+                    SoundAndHapticFeedback.playTradeSignal(context, resolvedSignal)
+                } else {
+                    SoundAndHapticFeedback.playSuccess(context)
+                }
                 if (editingMessageInit != null) {
                     onEditMessage(
                         editingMessageInit.id,
@@ -542,7 +727,7 @@ private fun AdminPublishMessageTab(
                         riskLevel,
                         markedPhotoBase64,
                         linkUrl.trim(),
-                        linkTitle.trim(),
+                        encodedLinkTitle,
                         isPinned,
                         editingMessageInit.replyToMessageId,
                         editingMessageInit.replyToTitle,
@@ -557,7 +742,7 @@ private fun AdminPublishMessageTab(
                         riskLevel,
                         markedPhotoBase64,
                         linkUrl.trim(),
-                        linkTitle.trim(),
+                        encodedLinkTitle,
                         isPinned,
                         replyingToMessageInit?.id ?: "",
                         replyingToMessageInit?.title ?: "",
@@ -570,6 +755,8 @@ private fun AdminPublishMessageTab(
                 markedPhotoBase64 = ""
                 linkUrl = ""
                 linkTitle = ""
+                selectedTargetTier = "ALL"
+                selectedSignalType = "AUTO"
                 isPinned = false
             },
             modifier = Modifier
@@ -600,14 +787,23 @@ private fun AdminPublishMessageTab(
 
 @Composable
 private fun AdminApprovalsTab(
+    isPrimaryMainAdmin: Boolean,
     pendingRegistrations: List<UserProfile>,
     pendingProfileEdits: List<UserProfile>,
     pendingRequests: List<AccessRequest>,
     onApproveUserAccount: (userId: String, grantSevenDayTrial: Boolean) -> Unit,
     onReviewProfileEdit: (user: UserProfile, approve: Boolean) -> Unit,
-    onReviewAccessRequest: (request: AccessRequest, approve: Boolean) -> Unit
+    onReviewAccessRequest: (request: AccessRequest, approve: Boolean) -> Unit,
+    onApproveAdminWebLoginWithPassword: (AccessRequest, Boolean, String) -> Boolean
 ) {
+    val context = LocalContext.current
     var inspectedScreenshot by remember { mutableStateOf<String?>(null) }
+    val adminWebAuthRequests = remember(pendingRequests) {
+        pendingRequests.filter { it.requestType == "ADMIN_WEB_AUTH" }
+    }
+    val paymentAndTrialRequests = remember(pendingRequests) {
+        pendingRequests.filter { it.requestType != "ADMIN_WEB_AUTH" }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -615,6 +811,140 @@ private fun AdminApprovalsTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Section 0: Admin & Co-Admin Website Login Verification (Main Admin + App Password Required)
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (adminWebAuthRequests.isNotEmpty()) {
+                        AmberColor.copy(alpha = 0.14f)
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    }
+                ),
+                border = BorderStroke(
+                    1.5.dp,
+                    if (adminWebAuthRequests.isNotEmpty()) AmberColor else EmeraldColor.copy(alpha = 0.5f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_web_login_verification_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = "Main Admin Web Verification",
+                            tint = if (adminWebAuthRequests.isNotEmpty()) AmberColor else EmeraldColor
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Admin / Co-Admin Website Login Verification (${adminWebAuthRequests.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "When an Admin or Co-Admin logs in on the Website, the Main Admin must verify and approve it here using the Main Admin App Password.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (adminWebAuthRequests.isEmpty()) {
+                        Text(
+                            text = "No pending Admin or Co-Admin Website login requests right now.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        adminWebAuthRequests.forEach { webReq ->
+                            var mainAdminPassInput by remember(webReq.id) { mutableStateOf("") }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, AmberColor.copy(alpha = 0.6f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Web Login Request: ${webReq.userName} (${webReq.userEmail})",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Browser / Device: ${webReq.deviceId} • Ref: ${webReq.utrReference}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    if (isPrimaryMainAdmin) {
+                                        OutlinedTextField(
+                                            value = mainAdminPassInput,
+                                            onValueChange = { mainAdminPassInput = it },
+                                            label = { Text("Enter Main Admin App Password to Verify") },
+                                            visualTransformation = PasswordVisualTransformation(),
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Button(
+                                                onClick = {
+                                                    val ok = onApproveAdminWebLoginWithPassword(
+                                                        webReq,
+                                                        true,
+                                                        mainAdminPassInput
+                                                    )
+                                                    if (ok) {
+                                                        SoundAndHapticFeedback.playSuccess(context)
+                                                        mainAdminPassInput = ""
+                                                    } else {
+                                                        SoundAndHapticFeedback.playAlertOrError(context)
+                                                    }
+                                                },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = EmeraldColor,
+                                                    contentColor = Color.Black
+                                                ),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Verify & Authorize Web", fontWeight = FontWeight.Bold)
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    SoundAndHapticFeedback.playAlertOrError(context)
+                                                    onApproveAdminWebLoginWithPassword(webReq, false, mainAdminPassInput)
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Block Web Login")
+                                            }
+                                        }
+                                    } else {
+                                        Text(
+                                            text = "🔒 Only the Main Admin (Owner) can verify and approve Admin/Co-Admin Website logins from the official Android app.",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = CrimsonColor,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Section A: New Member Registrations
         item {
             Text(
@@ -662,14 +992,20 @@ private fun AdminApprovalsTab(
                         Spacer(modifier = Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
-                                onClick = { onApproveUserAccount(user.userId, false) },
+                                onClick = {
+                                    SoundAndHapticFeedback.playSuccess(context)
+                                    onApproveUserAccount(user.userId, false)
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldColor, contentColor = Color.Black),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Approve", fontWeight = FontWeight.Bold)
                             }
                             OutlinedButton(
-                                onClick = { onApproveUserAccount(user.userId, true) },
+                                onClick = {
+                                    SoundAndHapticFeedback.playSuccess(context)
+                                    onApproveUserAccount(user.userId, true)
+                                },
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Approve + 7d Trial")
@@ -731,14 +1067,20 @@ private fun AdminApprovalsTab(
                         Spacer(modifier = Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
-                                onClick = { onReviewProfileEdit(user, true) },
+                                onClick = {
+                                    SoundAndHapticFeedback.playSuccess(context)
+                                    onReviewProfileEdit(user, true)
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldColor, contentColor = Color.Black),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Approve Edit", fontWeight = FontWeight.Bold)
                             }
                             OutlinedButton(
-                                onClick = { onReviewProfileEdit(user, false) },
+                                onClick = {
+                                    SoundAndHapticFeedback.playAlertOrError(context)
+                                    onReviewProfileEdit(user, false)
+                                },
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Reject Edit")
@@ -753,12 +1095,12 @@ private fun AdminApprovalsTab(
         item {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Subscription & 7-Day Trial Requests (${pendingRequests.size})",
+                text = "Subscription & 7-Day Trial Requests (${paymentAndTrialRequests.size})",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
         }
-        if (pendingRequests.isEmpty()) {
+        if (paymentAndTrialRequests.isEmpty()) {
             item {
                 Text(
                     text = "No pending subscription or trial requests.",
@@ -767,7 +1109,7 @@ private fun AdminApprovalsTab(
                 )
             }
         } else {
-            items(pendingRequests, key = { "sub_${it.id}" }) { req ->
+            items(paymentAndTrialRequests, key = { "sub_${it.id}" }) { req ->
                 val proofBmp = remember(req.paymentScreenshotBase64) {
                     ImageCodecHelper.decodeBase64ToBitmap(req.paymentScreenshotBase64)
                 }
@@ -810,14 +1152,20 @@ private fun AdminApprovalsTab(
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
-                                onClick = { onReviewAccessRequest(req, true) },
+                                onClick = {
+                                    SoundAndHapticFeedback.playSuccess(context)
+                                    onReviewAccessRequest(req, true)
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldColor, contentColor = Color.Black),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Approve (${req.validityDays}d)", fontWeight = FontWeight.Bold)
                             }
                             OutlinedButton(
-                                onClick = { onReviewAccessRequest(req, false) },
+                                onClick = {
+                                    SoundAndHapticFeedback.playAlertOrError(context)
+                                    onReviewAccessRequest(req, false)
+                                },
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text("Reject")
@@ -947,13 +1295,36 @@ private fun AdminModerationAlertsTab(
 @Composable
 private fun AdminUsersInspectorTab(
     allUsers: List<UserProfile>,
+    allDevices: List<DeviceRecord>,
     onSetUserCommodityMuted: (user: UserProfile, muted: Boolean) -> Unit,
     onResetUserDailyQuota: (UserProfile) -> Unit,
     onResetUserPin: (user: UserProfile, newPin: String) -> Unit,
     onUpdateUserSubscriptionDays: (userId: String, planName: String, daysLeft: Int) -> Unit,
-    onSetDeviceBanStatus: (user: UserProfile, ban: Boolean) -> Unit
+    onSetDeviceBanStatus: (user: UserProfile, ban: Boolean) -> Unit,
+    onAdminUpdateUserDeviceLimit: (UserProfile, Int) -> Unit,
+    onToggleSingleDeviceBlocked: (String, Boolean) -> Unit,
+    onRemoveDeviceSession: (String) -> Unit
 ) {
+    val context = LocalContext.current
     var inspectedUser by remember { mutableStateOf<UserProfile?>(null) }
+    var swipeGalleryItems by remember { mutableStateOf<List<SwipeableGalleryItem>>(emptyList()) }
+    var swipeInitialIndex by remember { mutableIntStateOf(0) }
+
+    val allUserGalleryItems = remember(allUsers, allDevices) {
+        allUsers.map { u ->
+            val devCount = allDevices.count { it.boundUserId == u.userId && !it.isBanned }.coerceAtLeast(1)
+            u.toSwipeableGalleryItem(activeDevicesCount = devCount)
+        }
+    }
+
+    if (swipeGalleryItems.isNotEmpty()) {
+        SwipeablePhotoAndProfileDialog(
+            items = swipeGalleryItems,
+            initialIndex = swipeInitialIndex,
+            dialogTitle = "Swipe Member Profiles & Photos",
+            onDismiss = { swipeGalleryItems = emptyList() }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -962,24 +1333,64 @@ private fun AdminUsersInspectorTab(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text(
-                text = "Member Directory & Security Credentials (${allUsers.size})",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Tap any member to inspect their App Lock PIN, Security Question & Answer, Device ID, IP, or manage their Commodity permissions.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Member Directory, Active Devices & Security (${allUsers.size})",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Tap any member or photo to swipe through profiles, inspect logged-in devices, or set device limits.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (allUserGalleryItems.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        SoundAndHapticFeedback.playClick(context)
+                        swipeInitialIndex = 0
+                        swipeGalleryItems = allUserGalleryItems
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_swipe_all_profiles_button"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Swipe, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "👆 Swipe All Member Profiles & Photos (${allUserGalleryItems.size})",
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
 
         items(allUsers, key = { it.userId.ifBlank { it.id } }) { user ->
             val avatarBmp = remember(user.photoBase64) {
                 ImageCodecHelper.decodeBase64ToBitmap(user.photoBase64)
             }
+            val userDevices = remember(allDevices, user.userId) {
+                allDevices.filter { it.boundUserId == user.userId }
+            }
+            val activeDevCount = userDevices.count { !it.isBanned }.coerceAtLeast(1)
+            val maxDevLimit = user.maxDevicesLimit(defaultLimit = 2)
+
             Card(
-                onClick = { inspectedUser = user },
+                onClick = {
+                    SoundAndHapticFeedback.playTap(context)
+                    inspectedUser = user
+                },
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -989,23 +1400,35 @@ private fun AdminUsersInspectorTab(
                     modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (avatarBmp != null) {
-                        Image(
-                            bitmap = avatarBmp.asImageBitmap(),
-                            contentDescription = "User Avatar",
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Person, contentDescription = null)
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                SoundAndHapticFeedback.playClick(context)
+                                val idx = allUsers.indexOfFirst { it.userId == user.userId }.coerceAtLeast(0)
+                                swipeInitialIndex = idx
+                                swipeGalleryItems = allUserGalleryItems
+                            }
+                    ) {
+                        if (avatarBmp != null) {
+                            Image(
+                                bitmap = avatarBmp.asImageBitmap(),
+                                contentDescription = "Swipe User Photo",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Person, contentDescription = null)
+                                }
                             }
                         }
                     }
@@ -1014,14 +1437,16 @@ private fun AdminUsersInspectorTab(
                         Text(
                             text = user.fullName.ifBlank { user.email },
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${user.email} • PIN: ${user.appLockPin.ifBlank { "Not Set" }}",
+                            text = "${user.email} • 📱 $activeDevCount/$maxDevLimit Devices • 2FA: ${if (user.isTwoStepEnabled()) "ON" else "OFF"}",
                             style = MaterialTheme.typography.bodySmall
                         )
                         Text(
-                            text = "Q: ${user.securityQuestion.ifBlank { "N/A" }} | A: ${user.securityAnswer.ifBlank { "N/A" }}",
+                            text = "Pass: ${user.extractAppPassword().ifBlank { "Set" }} | PIN: ${user.appLockPin.ifBlank { "Not Set" }} | Model: ${user.deviceModel.ifBlank { "Mobile" }}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1035,6 +1460,12 @@ private fun AdminUsersInspectorTab(
     inspectedUser?.let { user ->
         var daysInput by remember(user) { mutableStateOf(user.daysRemaining().toString()) }
         var pinInput by remember(user) { mutableStateOf(user.appLockPin.ifBlank { "1234" }) }
+        var selectedMaxDevices by remember(user.securityQuestion) {
+            mutableIntStateOf(user.maxDevicesLimit(defaultLimit = 2))
+        }
+        val userDevices = remember(allDevices, user.userId) {
+            allDevices.filter { it.boundUserId == user.userId }
+        }
         val isBanned = user.accountStatus == "BANNED"
 
         AlertDialog(
@@ -1047,17 +1478,85 @@ private fun AdminUsersInspectorTab(
                 ) {
                     Text("Email: ${user.email}", style = MaterialTheme.typography.bodySmall)
                     Text("Phone: ${user.phoneNumber} • City: ${user.city}", style = MaterialTheme.typography.bodySmall)
-                    Text("Device ID: ${user.deviceId} (${user.deviceModel})", style = MaterialTheme.typography.labelSmall)
+                    Text("Primary Device: ${user.deviceModel} (${user.deviceId})", style = MaterialTheme.typography.labelSmall)
                     Text("IP Address: ${user.ipAddress}", style = MaterialTheme.typography.labelSmall)
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text("📱 Active Devices & Login Limit Control", fontWeight = FontWeight.Bold, color = EmeraldColor)
+                    Text(
+                        text = "Set Max Login Devices Allowed for ${user.fullName.ifBlank { "this user" }}:",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(1, 2, 3, 5).forEach { limitOpt ->
+                            FilterChip(
+                                selected = selectedMaxDevices == limitOpt,
+                                onClick = {
+                                    SoundAndHapticFeedback.playTap(context)
+                                    selectedMaxDevices = limitOpt
+                                    onAdminUpdateUserDeviceLimit(user, limitOpt)
+                                },
+                                label = { Text("${limitOpt}x") }
+                            )
+                        }
+                    }
+
+                    if (userDevices.isEmpty()) {
+                        Text(
+                            text = "• ${user.deviceModel.ifBlank { "Mobile" }} (${user.deviceId}) — Active",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    } else {
+                        userDevices.forEach { dev ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (dev.isBanned) CrimsonColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "${dev.deviceModel.ifBlank { "Mobile/Web" }} • ${if (dev.isBanned) "BLOCKED" else "ACTIVE"}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (dev.isBanned) CrimsonColor else EmeraldColor
+                                    )
+                                    Text(
+                                        text = "ID: ${dev.deviceId} • IP: ${dev.ipAddress}",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                SoundAndHapticFeedback.playAlertOrError(context)
+                                                onToggleSingleDeviceBlocked(dev.deviceId, !dev.isBanned)
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(if (dev.isBanned) "Unblock" else "Block Device")
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                SoundAndHapticFeedback.playTap(context)
+                                                onRemoveDeviceSession(dev.deviceId)
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text("Sign Out")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     Text("Security Credentials (Admin View)", fontWeight = FontWeight.Bold)
                     Text(
-                        text = "App Lock PIN / Password: ${user.appLockPin.ifBlank { "Not Set" }}",
+                        text = "Account Password: ${user.extractAppPassword().ifBlank { "Standard" }} • 2-Step PIN: ${user.appLockPin.ifBlank { "Not Set" }} (${if (user.isTwoStepEnabled()) "2FA ON" else "2FA Optional"})",
                         color = EmeraldColor,
                         fontWeight = FontWeight.Bold
                     )
-                    Text("Security Question: ${user.securityQuestion.ifBlank { "Not Set" }}")
+                    Text("Security Question: ${user.displaySecurityQuestion()}")
                     Text(
                         text = "Security Answer: ${user.securityAnswer.ifBlank { "Not Set" }}",
                         color = AmberColor,
@@ -1072,7 +1571,10 @@ private fun AdminUsersInspectorTab(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                     Button(
-                        onClick = { onResetUserPin(user, pinInput) },
+                        onClick = {
+                            SoundAndHapticFeedback.playSuccess(context)
+                            onResetUserPin(user, pinInput)
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Force Update User PIN")
@@ -1154,6 +1656,7 @@ private fun AdminUsersInspectorTab(
 private fun AdminPlansAndConfigTab(
     pricingConfig: PricingConfig,
     adminSettings: AdminSettings,
+    broadcastMessages: List<BroadcastMessage> = emptyList(),
     appleWebAppUrl: String,
     androidApkShareUrl: String,
     onUpdateShareUrls: (appleUrl: String, androidUrl: String) -> Unit,
@@ -1186,7 +1689,9 @@ private fun AdminPlansAndConfigTab(
     onRemoveCoAdminEmail: (String) -> Unit,
     onUpdateTodayProfitBannerAndCard: (TodayProfitBanner, Boolean) -> Unit = { _, _ -> },
     onBulkExtendSubscribers: (Int) -> Unit = {},
-    onClearUnpinnedCommodityMessages: () -> Unit = {}
+    onClearUnpinnedCommodityMessages: () -> Unit = {},
+    onPushAdminFirmwareToAllDevices: (enabled: Boolean, versionName: String, releaseNotes: String) -> Unit = { _, _, _ -> },
+    onApplyDailyMessageLimit: (Long) -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -1216,9 +1721,15 @@ private fun AdminPlansAndConfigTab(
     var showAddCustomPlanModal by remember { mutableStateOf(false) }
     var showPnlEditorModal by remember { mutableStateOf(false) }
 
+    val currentFw = remember(pricingConfig) { pricingConfig.firmwareConfig() }
+    var fwEnabledToggle by remember(currentFw) { mutableStateOf(currentFw.enabled) }
+    var fwVersionName by remember(currentFw) { mutableStateOf(currentFw.versionName) }
+    var fwReleaseNotes by remember(currentFw) { mutableStateOf(currentFw.releaseNotes) }
+
     var upiId by remember(pricingConfig) { mutableStateOf(pricingConfig.upiId) }
     var upiMobile by remember(pricingConfig) { mutableStateOf(pricingConfig.upiMobileNumber) }
     var dailyLimit by remember(pricingConfig) { mutableStateOf(pricingConfig.dailyReviewLimitPerUser.toString()) }
+    var applyLimitToggle by remember { mutableStateOf(true) }
     var trialDays by remember(pricingConfig) { mutableStateOf(pricingConfig.trialDays.toString()) }
     var isChatLocked by remember(pricingConfig) { mutableStateOf(pricingConfig.commodityChatLocked) }
     var newCoAdminEmail by remember { mutableStateOf("") }
@@ -1255,7 +1766,8 @@ private fun AdminPlansAndConfigTab(
             plan1Enabled = updatedP1Enabled,
             customPlans = updatedCustomPlans,
             todayProfit = pricingConfig.todayProfitBanner(),
-            announcementTicker = announcementTicker
+            announcementTicker = announcementTicker,
+            firmwareConfig = pricingConfig.firmwareConfig()
         )
         onSavePricingAndQrConfig(
             plan1Name,
@@ -1289,7 +1801,7 @@ private fun AdminPlansAndConfigTab(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // Admin Permanent Website QR Code & Apple / Android Share Hub
         PermanentQrAndShareCard(
@@ -1298,6 +1810,104 @@ private fun AdminPlansAndConfigTab(
             isAdmin = true,
             onUpdateUrls = onUpdateShareUrls
         )
+
+        // 🚀 ADMIN MANDATORY FIRMWARE UPDATE PUSH TO ALL DEVICES & WEBSITE
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.5.dp, ElectricBlueColor),
+            colors = CardDefaults.cardColors(
+                containerColor = ElectricBlueColor.copy(alpha = 0.08f)
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("admin_firmware_push_card")
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = null,
+                            tint = ElectricBlueColor
+                        )
+                        Column {
+                            Text(
+                                text = "🚀 Admin Mandatory Firmware Push",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "Toggle ON & Push to force a mandatory full-screen Firmware Update on all member phones and website browsers",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = fwEnabledToggle,
+                        onCheckedChange = { enabled ->
+                            SoundAndHapticFeedback.playClick(context)
+                            fwEnabledToggle = enabled
+                            onPushAdminFirmwareToAllDevices(enabled, fwVersionName, fwReleaseNotes)
+                        },
+                        modifier = Modifier.testTag("admin_firmware_toggle")
+                    )
+                }
+
+                OutlinedTextField(
+                    value = fwVersionName,
+                    onValueChange = { fwVersionName = it },
+                    label = { Text("Admin Firmware Build Version") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = fwReleaseNotes,
+                    onValueChange = { fwReleaseNotes = it },
+                    label = { Text("Mandatory Update Release Notes") },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Button(
+                    onClick = {
+                        fwEnabledToggle = true
+                        SoundAndHapticFeedback.playTradeSignal(context, "TARGET HIT")
+                        onPushAdminFirmwareToAllDevices(true, fwVersionName, fwReleaseNotes)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("admin_push_firmware_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ElectricBlueColor,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(Icons.Default.SystemUpdate, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Upload & Force Firmware Update to All Devices",
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
 
         // SUPER ADMIN COMMAND SUITE (Today's P&L, Announcement Ticker, Bulk Subscriber Extensions)
         Card(
@@ -1399,7 +2009,7 @@ private fun AdminPlansAndConfigTab(
             Switch(checked = isChatLocked, onCheckedChange = { isChatLocked = it })
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = dailyLimit,
                 onValueChange = { dailyLimit = it.filter(Char::isDigit) },
@@ -1414,6 +2024,69 @@ private fun AdminPlansAndConfigTab(
                 singleLine = true,
                 modifier = Modifier.weight(1f)
             )
+        }
+
+        // Explicit Apply Toggle & Button for Daily Message Limit and Plans
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = EmeraldColor.copy(alpha = 0.12f),
+            border = BorderStroke(1.dp, EmeraldColor.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Switch(
+                        checked = applyLimitToggle,
+                        onCheckedChange = {
+                            SoundAndHapticFeedback.playClick(context)
+                            applyLimitToggle = it
+                            if (it) {
+                                val parsed = (dailyLimit.toLongOrNull() ?: 10L).coerceIn(1L, 100L)
+                                onApplyDailyMessageLimit(parsed)
+                            }
+                        },
+                        modifier = Modifier.testTag("admin_apply_limit_toggle")
+                    )
+                    Column {
+                        Text(
+                            text = "Apply Daily Limit & Plan Rules",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = "Tap Apply to enforce ${dailyLimit.ifBlank { "10" }} msgs/day & active plans",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Button(
+                    onClick = {
+                        SoundAndHapticFeedback.playTradeSignal(context, "BUY")
+                        val parsed = (dailyLimit.toLongOrNull() ?: 10L).coerceIn(1L, 100L)
+                        onApplyDailyMessageLimit(parsed)
+                        triggerSaveAll()
+                    },
+                    enabled = applyLimitToggle,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EmeraldColor,
+                        contentColor = Color.Black
+                    ),
+                    modifier = Modifier.testTag("admin_apply_limit_button")
+                ) {
+                    Text("Apply Now", fontWeight = FontWeight.ExtraBold)
+                }
+            }
         }
 
         OutlinedTextField(
@@ -1772,6 +2445,7 @@ private fun AdminPlansAndConfigTab(
     if (showPnlEditorModal) {
         OwnerProfitEditorDialog(
             initialBanner = pricingConfig.todayProfitBanner(),
+            broadcastMessages = broadcastMessages,
             onDismiss = { showPnlEditorModal = false },
             onSave = { updatedBanner, alsoPostInFeed ->
                 onUpdateTodayProfitBannerAndCard(updatedBanner, alsoPostInFeed)

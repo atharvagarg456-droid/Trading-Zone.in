@@ -9,6 +9,7 @@ import com.example.data.model.BroadcastMessage
 import com.example.data.model.CommunityReview
 import com.example.data.model.CustomPlanItem
 import com.example.data.model.DeviceRecord
+import com.example.data.model.FirmwareUpdateConfig
 import com.example.data.model.MessageReadReceipt
 import com.example.data.model.ModerationAlert
 import com.example.data.model.PRIMARY_ADMIN_EMAIL
@@ -119,6 +120,11 @@ class TradingViewModel(
         securityPreferences.getAndroidApkShareUrl()
     )
     val androidApkShareUrl: StateFlow<String> = _androidApkShareUrl.asStateFlow()
+
+    private val _installedFirmwareStamp = MutableStateFlow(
+        securityPreferences.getInstalledFirmwareStamp()
+    )
+    val installedFirmwareStamp: StateFlow<String> = _installedFirmwareStamp.asStateFlow()
 
     private val _localOpenedMessageIds = MutableStateFlow(
         securityPreferences.getOpenedMessageIds(currentUserId)
@@ -387,6 +393,32 @@ class TradingViewModel(
             initialValue = emptyList()
         )
 
+    val myDevices: StateFlow<List<DeviceRecord>> = repository.observeDevicesForUser(currentUserId)
+        .catch { emit(emptyList()) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000L),
+            initialValue = emptyList()
+        )
+
+    val allDevicesForAdmin: StateFlow<List<DeviceRecord>> = isUserAdmin
+        .flatMapLatest { admin ->
+            if (admin) {
+                repository.observeAllDevicesForAdmin()
+                    .catch { emit(emptyList()) }
+            } else {
+                flowOf(emptyList())
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000L),
+            initialValue = emptyList()
+        )
+
+    val isPrimaryMainAdmin: Boolean =
+        currentUserEmail.equals(PRIMARY_ADMIN_EMAIL, ignoreCase = true)
+
     init {
         viewModelScope.launch {
             while (isActive) {
@@ -394,7 +426,8 @@ class TradingViewModel(
                     repository.touchUserPresence(
                         userId = currentUserId,
                         ipAddress = ipAddress,
-                        deviceModel = deviceModel
+                        deviceModel = deviceModel,
+                        deviceId = deviceId
                     )
                 } catch (_: Exception) {
                 }
@@ -426,6 +459,7 @@ class TradingViewModel(
         _isSessionUnlocked.value = true
         viewModelScope.launch {
             repository.syncAppLockPinInProfile(pin)
+            repository.updateSecurityQuestionInProfile(securityQuestion, securityAnswer)
         }
     }
 
@@ -1019,7 +1053,8 @@ class TradingViewModel(
         plan1Enabled: Boolean = pricingConfig.value.isPlan1Enabled(),
         customPlans: List<CustomPlanItem> = pricingConfig.value.customPlans(),
         todayProfitBanner: TodayProfitBanner = pricingConfig.value.todayProfitBanner(),
-        announcementTicker: String = pricingConfig.value.announcementTicker()
+        announcementTicker: String = pricingConfig.value.announcementTicker(),
+        firmwareConfig: FirmwareUpdateConfig = pricingConfig.value.firmwareConfig()
     ) {
         viewModelScope.launch {
             _isBusy.value = true
@@ -1028,14 +1063,16 @@ class TradingViewModel(
                     it.startsWith("__META1__|") ||
                         it.startsWith("__CP__|") ||
                         it.startsWith("__PNL__|") ||
-                        it.startsWith("__TICKER__|")
+                        it.startsWith("__TICKER__|") ||
+                        it.startsWith("__META_FW__:")
                 }
                 val encodedBenefits = PricingConfig.buildBenefitsWithMeta(
                     displayBenefits = cleanDisplayBenefits,
                     plan1Enabled = plan1Enabled,
                     customPlans = customPlans,
                     todayProfit = todayProfitBanner,
-                    announcementTicker = announcementTicker
+                    announcementTicker = announcementTicker,
+                    firmwareConfig = firmwareConfig
                 )
                 repository.savePricingConfig(
                     planName = planName,
@@ -1322,12 +1359,132 @@ class TradingViewModel(
                     instrumentText = banner.instrumentText,
                     roiPercent = banner.roiPercent,
                     isProfit = banner.isProfit,
-                    noteText = banner.noteText
+                    noteText = banner.noteText,
+                    linkedBroadcastTitle = banner.linkedBroadcastTitle
                 ).onSuccess {
-                    _statusMessage.value = "Today's P&L Banner updated & Trade Result Card posted to Commodity!"
+                    _statusMessage.value = "Trade Signal P&L Banner updated & Trade Result Card posted to Commodity!"
                 }
             }
         }
+    }
+
+    fun verifyAppPassword(candidatePassword: String): Boolean {
+        val clean = candidatePassword.trim()
+        if (clean.isBlank()) return false
+        val remotePass = userProfile.value?.extractAppPassword().orEmpty()
+        if (remotePass.isNotBlank()) {
+            return remotePass == clean
+        }
+        return securityPreferences.verifyAppPassword(currentUserId, clean)
+    }
+
+    fun updateMySecurityPreferences(
+        newPassword: String?,
+        twoStepEnabled: Boolean,
+        maxDevicesLimit: Int
+    ) {
+        val profile = userProfile.value
+        val currentPass = when {
+            !newPassword.isNullOrBlank() -> newPassword.trim()
+            profile?.extractAppPassword()?.isNotBlank() == true -> profile.extractAppPassword()
+            else -> securityPreferences.getPlainAppPassword(currentUserId)
+        }
+        if (currentPass.isNotBlank()) {
+            securityPreferences.saveAppPassword(currentUserId, currentPass)
+        }
+        val plainQ = profile?.displaySecurityQuestion()
+            ?: _localSecurityQuestion.value.ifBlank { "What is your favorite trading instrument?" }
+        val encoded = UserProfile.encodeSecurityMetadata(
+            password = currentPass,
+            twoStepEnabled = twoStepEnabled,
+            maxDevicesLimit = maxDevicesLimit.coerceIn(1, 10),
+            plainQuestion = plainQ
+        )
+        _localSecurityQuestion.value = encoded
+        viewModelScope.launch {
+            repository.updateUserSecurityMetadata(currentUserId, encoded)
+                .onSuccess {
+                    _statusMessage.value = "Account security, 2-Step Verification & Device Limit updated!"
+                }
+                .onFailure {
+                    _statusMessage.value = it.localizedMessage ?: "Failed to update security settings."
+                }
+        }
+    }
+
+    fun adminUpdateUserDeviceLimit(user: UserProfile, maxDevicesLimit: Int) {
+        val encoded = UserProfile.encodeSecurityMetadata(
+            password = user.extractAppPassword(),
+            twoStepEnabled = user.isTwoStepEnabled(false),
+            maxDevicesLimit = maxDevicesLimit.coerceIn(1, 10),
+            plainQuestion = user.displaySecurityQuestion()
+        )
+        viewModelScope.launch {
+            repository.updateUserSecurityMetadata(user.userId, encoded)
+                .onSuccess {
+                    _statusMessage.value = "Set max login devices limit to ${maxDevicesLimit.coerceIn(1, 10)} for ${user.fullName}."
+                }
+                .onFailure {
+                    _statusMessage.value = it.localizedMessage ?: "Failed to update user device limit."
+                }
+        }
+    }
+
+    fun toggleSingleDeviceBlocked(targetDeviceId: String, blocked: Boolean) {
+        viewModelScope.launch {
+            repository.setSingleDeviceBlockedStatus(targetDeviceId, blocked)
+                .onSuccess {
+                    _statusMessage.value = if (blocked) {
+                        "Device $targetDeviceId blocked from accessing account."
+                    } else {
+                        "Device $targetDeviceId unblocked."
+                    }
+                }
+                .onFailure {
+                    _statusMessage.value = it.localizedMessage ?: "Failed to update device status."
+                }
+        }
+    }
+
+    fun removeDeviceSession(targetDeviceId: String) {
+        viewModelScope.launch {
+            repository.removeDeviceSession(targetDeviceId)
+                .onSuccess {
+                    _statusMessage.value = "Signed out & removed device $targetDeviceId."
+                }
+                .onFailure {
+                    _statusMessage.value = it.localizedMessage ?: "Failed to remove device session."
+                }
+        }
+    }
+
+    fun approveAdminWebLoginWithPassword(
+        request: AccessRequest,
+        approve: Boolean,
+        enteredMainAdminPassword: String
+    ): Boolean {
+        if (!isPrimaryMainAdmin) {
+            _statusMessage.value = "Only the Primary Admin ($PRIMARY_ADMIN_EMAIL) can verify Admin/Co-Admin Website logins."
+            return false
+        }
+        if (approve && !verifyAppPassword(enteredMainAdminPassword)) {
+            _statusMessage.value = "Invalid Main Admin App Password! Verification denied."
+            return false
+        }
+        viewModelScope.launch {
+            repository.reviewAccessRequest(request, approve)
+                .onSuccess {
+                    _statusMessage.value = if (approve) {
+                        "Verified & Approved Website login for ${request.userEmail}!"
+                    } else {
+                        "Blocked & Rejected Website login for ${request.userEmail}."
+                    }
+                }
+                .onFailure {
+                    _statusMessage.value = it.localizedMessage ?: "Failed to update Web login request."
+                }
+        }
+        return true
     }
 
     fun updateAnnouncementTicker(ticker: String) {
@@ -1361,6 +1518,108 @@ class TradingViewModel(
             todayProfitBanner = cfg.todayProfitBanner(),
             announcementTicker = ticker
         )
+    }
+
+    fun applyDailyMessageLimitNow(newLimit: Long) {
+        val cfg = pricingConfig.value
+        val clamped = newLimit.coerceIn(1L, 100L)
+        savePricingAndQrConfig(
+            planName = cfg.planName,
+            priceInr = cfg.priceInr,
+            validityDays = cfg.validityDays,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = cfg.qrCodeBase64,
+            qrOnlyMode = cfg.qrOnlyMode,
+            plan2Enabled = cfg.plan2Enabled,
+            plan2Name = cfg.plan2Name,
+            plan2PriceInr = cfg.plan2PriceInr,
+            plan2ValidityDays = cfg.plan2ValidityDays,
+            plan2QrCodeBase64 = cfg.plan2QrCodeBase64,
+            plan2QrOnlyMode = cfg.plan2QrOnlyMode,
+            plan3Enabled = cfg.plan3Enabled,
+            plan3Name = cfg.plan3Name,
+            plan3PriceInr = cfg.plan3PriceInr,
+            plan3ValidityDays = cfg.plan3ValidityDays,
+            plan3QrCodeBase64 = cfg.plan3QrCodeBase64,
+            plan3QrOnlyMode = cfg.plan3QrOnlyMode,
+            dailyReviewLimitPerUser = clamped,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            plan1Enabled = cfg.isPlan1Enabled(),
+            customPlans = cfg.customPlans(),
+            todayProfitBanner = cfg.todayProfitBanner(),
+            announcementTicker = cfg.announcementTicker(),
+            firmwareConfig = cfg.firmwareConfig()
+        )
+        _statusMessage.value = "Applied Daily Commodity Message Limit: $clamped messages/day!"
+    }
+
+    fun pushAdminFirmwareToAllDevices(
+        enabled: Boolean,
+        versionName: String,
+        releaseNotes: String
+    ) {
+        val cfg = pricingConfig.value
+        val nowMillis = if (enabled) System.currentTimeMillis() else cfg.firmwareConfig().pushedAtMillis
+        val newFw = FirmwareUpdateConfig(
+            enabled = enabled,
+            versionName = versionName.trim().ifBlank { "v4.5.0-ULTRA-PRO-MAX" },
+            mandatoryForAll = true,
+            pushedAtMillis = nowMillis,
+            releaseNotes = releaseNotes.trim().ifBlank {
+                "Mandatory Ultra Pro Max Firmware: Tiered VIP Broadcasts, Trade Signal Haptics & Chrome/Safari Engine"
+            }
+        )
+        // Automatically mark Admin's own device as updated to the newly pushed stamp
+        val stamp = newFw.uniqueVersionStamp()
+        securityPreferences.setInstalledFirmwareStamp(stamp)
+        _installedFirmwareStamp.value = stamp
+
+        savePricingAndQrConfig(
+            planName = cfg.planName,
+            priceInr = cfg.priceInr,
+            validityDays = cfg.validityDays,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = cfg.qrCodeBase64,
+            qrOnlyMode = cfg.qrOnlyMode,
+            plan2Enabled = cfg.plan2Enabled,
+            plan2Name = cfg.plan2Name,
+            plan2PriceInr = cfg.plan2PriceInr,
+            plan2ValidityDays = cfg.plan2ValidityDays,
+            plan2QrCodeBase64 = cfg.plan2QrCodeBase64,
+            plan2QrOnlyMode = cfg.plan2QrOnlyMode,
+            plan3Enabled = cfg.plan3Enabled,
+            plan3Name = cfg.plan3Name,
+            plan3PriceInr = cfg.plan3PriceInr,
+            plan3ValidityDays = cfg.plan3ValidityDays,
+            plan3QrCodeBase64 = cfg.plan3QrCodeBase64,
+            plan3QrOnlyMode = cfg.plan3QrOnlyMode,
+            dailyReviewLimitPerUser = cfg.dailyReviewLimitPerUser,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            plan1Enabled = cfg.isPlan1Enabled(),
+            customPlans = cfg.customPlans(),
+            todayProfitBanner = cfg.todayProfitBanner(),
+            announcementTicker = cfg.announcementTicker(),
+            firmwareConfig = newFw
+        )
+        _statusMessage.value = if (enabled) {
+            "Mandatory Firmware ${newFw.versionName} pushed to all devices & website!"
+        } else {
+            "Mandatory Firmware gate turned off for all devices."
+        }
+    }
+
+    fun applyMandatoryFirmwareUpdateNow() {
+        val fw = pricingConfig.value.firmwareConfig()
+        val stamp = fw.uniqueVersionStamp()
+        securityPreferences.setInstalledFirmwareStamp(stamp)
+        _installedFirmwareStamp.value = stamp
+        _statusMessage.value = "Firmware ${fw.versionName} synchronized & installed!"
     }
 
     fun toggleTelegramReaction(targetId: String, emoji: String) {

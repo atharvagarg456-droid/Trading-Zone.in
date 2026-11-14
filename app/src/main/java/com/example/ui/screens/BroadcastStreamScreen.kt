@@ -70,14 +70,53 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import com.example.data.model.BroadcastMessage
 import com.example.data.model.DeviceRecord
 import com.example.data.model.MessageReadReceipt
 import com.example.data.model.PricingConfig
 import com.example.data.model.UserProfile
 import com.example.ui.components.ImageCodecHelper
+import com.example.ui.components.SwipeableGalleryItem
+import com.example.ui.components.SwipeablePhotoAndProfileDialog
+import com.example.ui.components.toSwipeableGalleryItem
+import com.example.util.SoundAndHapticFeedback
 import java.text.SimpleDateFormat
 import java.util.Locale
+
+@Composable
+fun TradeSignalTypeBadge(
+    signalType: String,
+    onClick: () -> Unit = {}
+) {
+    val upper = signalType.uppercase(Locale.ROOT).trim()
+    val (bg, fg, label) = when (upper) {
+        "BUY" -> Triple(Color(0xFF10B981).copy(alpha = 0.20f), Color(0xFF34D399), "🟢 BUY SIGNAL")
+        "SELL" -> Triple(Color(0xFFEF4444).copy(alpha = 0.20f), Color(0xFFF87171), "🔴 SELL SIGNAL")
+        "TARGET HIT", "TARGET_HIT", "TARGET" -> Triple(
+            Color(0xFFF59E0B).copy(alpha = 0.22f),
+            Color(0xFFFBBF24),
+            "🎯 TARGET HIT"
+        )
+        else -> return
+    }
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = bg,
+        border = BorderStroke(1.dp, fg.copy(alpha = 0.45f)),
+        modifier = Modifier.clickable { onClick() }
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = fg,
+            fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+    }
+}
 
 @Composable
 fun TradeRiskBadge(riskLevel: String) {
@@ -125,9 +164,16 @@ fun BroadcastStreamScreen(
     onDeleteMessageRequest: (String) -> Unit
 ) {
     val isEntitled = isAdmin || (userProfile?.isEntitledNow() == true)
-    var expandedPhotoBase64 by remember { mutableStateOf<String?>(null) }
+    var swipeGalleryItems by remember { mutableStateOf<List<SwipeableGalleryItem>>(emptyList()) }
+    var swipeInitialIndex by remember { mutableStateOf(0) }
     var inspectSeenByMessage by remember { mutableStateOf<BroadcastMessage?>(null) }
     var previewQuotedMessage by remember { mutableStateOf<BroadcastMessage?>(null) }
+
+    val eligibleChartGallery = remember(messages, userProfile, isAdmin) {
+        messages.filter {
+            it.markedPhotoBase64.isNotBlank() && it.isUserEligibleForTier(userProfile, isAdmin)
+        }.map { it.toSwipeableGalleryItem() }
+    }
 
     val receiptsByMessageId = remember(allMessageReadReceipts) {
         allMessageReadReceipts.groupBy { it.messageId }
@@ -137,32 +183,13 @@ fun BroadcastStreamScreen(
         if (isAdmin) 0 else messages.count { it.id.isNotBlank() && it.id !in openedMessageIds }
     }
 
-    if (expandedPhotoBase64 != null) {
-        val bmp = remember(expandedPhotoBase64) {
-            ImageCodecHelper.decodeBase64ToBitmap(expandedPhotoBase64)
-        }
-        Dialog(
-            onDismissRequest = { expandedPhotoBase64 = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.92f))
-                    .clickable { expandedPhotoBase64 = null }
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                if (bmp != null) {
-                    Image(
-                        bitmap = bmp.asImageBitmap(),
-                        contentDescription = "Full screen chart",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-        }
+    if (swipeGalleryItems.isNotEmpty()) {
+        SwipeablePhotoAndProfileDialog(
+            items = swipeGalleryItems,
+            initialIndex = swipeInitialIndex,
+            dialogTitle = "Swipe Marked Trade Charts",
+            onDismiss = { swipeGalleryItems = emptyList() }
+        )
     }
 
     if (inspectSeenByMessage != null) {
@@ -350,11 +377,23 @@ fun BroadcastStreamScreen(
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    text = if (pnlBanner.isProfit) "TODAY'S OWNER PROFIT • ${pnlBanner.instrumentText}" else "TODAY'S TRADE P&L • ${pnlBanner.instrumentText}",
+                                                    text = if (pnlBanner.isProfit) {
+                                                        "TRADE SIGNAL PROFIT (AS PER CALL) • ${pnlBanner.instrumentText}"
+                                                    } else {
+                                                        "TRADE SIGNAL P&L (AS PER CALL) • ${pnlBanner.instrumentText}"
+                                                    },
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = pColor,
                                                     fontWeight = FontWeight.ExtraBold
                                                 )
+                                                if (pnlBanner.linkedBroadcastTitle.isNotBlank()) {
+                                                    Text(
+                                                        text = "Call: ${pnlBanner.linkedBroadcastTitle}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
                                                 Text(
                                                     text = "${pnlBanner.amountText} (${pnlBanner.roiPercent}) — Tap to react in Commodity 🔥",
                                                     style = MaterialTheme.typography.bodySmall,
@@ -375,11 +414,33 @@ fun BroadcastStreamScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.height(10.dp))
-                                OutlinedButton(
-                                    onClick = onNavigateToReviews,
-                                    shape = RoundedCornerShape(12.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text("Open Commodity Section & Live P&L")
+                                    OutlinedButton(
+                                        onClick = onNavigateToReviews,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = "Commodity & Live P&L",
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    if (eligibleChartGallery.isNotEmpty()) {
+                                        Button(
+                                            onClick = {
+                                                swipeInitialIndex = 0
+                                                swipeGalleryItems = eligibleChartGallery
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.testTag("swipe_all_charts_button")
+                                        ) {
+                                            Text("📸 Swipe Charts (${eligibleChartGallery.size})")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -404,12 +465,14 @@ fun BroadcastStreamScreen(
                 } else {
                     items(messages, key = { it.id.ifBlank { it.title + it.createdAt } }) { message ->
                         val isOpened = isAdmin || message.id in openedMessageIds
+                        val isEligibleForTier = message.isUserEligibleForTier(userProfile, isAdmin)
                         val messageReceipts = receiptsByMessageId[message.id].orEmpty()
                         val msgTargetId = "msg_${message.id}"
 
                         BroadcastMessageCard(
                             message = message,
                             isOpened = isOpened,
+                            isEligibleForTier = isEligibleForTier,
                             seenByCount = messageReceipts.size,
                             largeTextMode = largeTextMode,
                             isAdmin = isAdmin,
@@ -418,6 +481,7 @@ fun BroadcastStreamScreen(
                             myReactedKeys = myReactedKeys,
                             onReact = { emoji -> onToggleReaction(msgTargetId, emoji) },
                             onOpenEnvelope = { onMarkMessageOpened(message) },
+                            onUpgradePlanRequest = onNavigateToMembership,
                             onInspectSeenBy = { inspectSeenByMessage = message },
                             onClickQuotedReply = {
                                 val target = messages.find { it.id == message.replyToMessageId }
@@ -425,7 +489,16 @@ fun BroadcastStreamScreen(
                                     previewQuotedMessage = target
                                 }
                             },
-                            onExpandPhoto = { photo -> expandedPhotoBase64 = photo },
+                            onExpandPhoto = {
+                                val idx = eligibleChartGallery.indexOfFirst { it.id == message.id }
+                                if (idx >= 0) {
+                                    swipeInitialIndex = idx
+                                    swipeGalleryItems = eligibleChartGallery
+                                } else {
+                                    swipeInitialIndex = 0
+                                    swipeGalleryItems = listOf(message.toSwipeableGalleryItem())
+                                }
+                            },
                             onReply = { onReplyToMessageRequest(message) },
                             onEdit = { onEditMessageRequest(message) },
                             onDelete = { onDeleteMessageRequest(message.id) }
@@ -437,10 +510,12 @@ fun BroadcastStreamScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BroadcastMessageCard(
     message: BroadcastMessage,
     isOpened: Boolean,
+    isEligibleForTier: Boolean,
     seenByCount: Int,
     largeTextMode: Boolean,
     isAdmin: Boolean,
@@ -449,6 +524,7 @@ private fun BroadcastMessageCard(
     myReactedKeys: Set<String>,
     onReact: (String) -> Unit,
     onOpenEnvelope: () -> Unit,
+    onUpgradePlanRequest: () -> Unit,
     onInspectSeenBy: () -> Unit,
     onClickQuotedReply: () -> Unit,
     onExpandPhoto: (String) -> Unit,
@@ -456,17 +532,30 @@ private fun BroadcastMessageCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val uriHandler = LocalUriHandler.current
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy • hh:mm a", Locale.getDefault()) }
     val dateStr = remember(message.createdAt) {
         message.createdAt?.toDate()?.let { dateFormat.format(it) } ?: "Just now"
+    }
+    val resolvedSig = remember(message.title, message.content, message.linkTitle) {
+        message.resolvedSignalType()
+    }
+    val tierLabel = remember(message.linkTitle) {
+        message.targetTierDisplayLabel()
+    }
+    val isRestrictedTier = remember(message.linkTitle) {
+        val t = message.targetMembershipTier()
+        t.isNotBlank() && !t.equals("ALL", ignoreCase = true)
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .then(
-                if (message.isPinned) {
+                if (!isEligibleForTier) {
+                    Modifier.border(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+                } else if (message.isPinned) {
                     Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
                 } else {
                     Modifier
@@ -477,12 +566,8 @@ private fun BroadcastMessageCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
-            // Unopened Envelope State for Members
-            AnimatedVisibility(
-                visible = !isOpened,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
+            if (!isEligibleForTier) {
+                // Locked VIP Broadcast Card for lower-tier or free-trial members
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -490,92 +575,221 @@ private fun BroadcastMessageCard(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xFFF59E0B).copy(alpha = 0.18f),
+                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f))
+                    ) {
+                        Text(
+                            text = "👑 VIP TIER EXCLUSIVE • ${tierLabel.uppercase(Locale.ROOT)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFFBBF24),
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
+                        color = Color(0xFFF59E0B).copy(alpha = 0.16f),
                         modifier = Modifier.size(56.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = Icons.Default.MarkEmailUnread,
-                                contentDescription = "New Unopened Message",
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Locked VIP Broadcast",
+                                tint = Color(0xFFFBBF24),
                                 modifier = Modifier.size(28.dp)
                             )
                         }
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "Trading Zone • 1 New Message",
+                        text = "VIP Trade Signal Locked",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Posted $dateStr by ${message.authorName}",
+                        text = "Published $dateStr by ${message.authorName}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "This high-conviction signal is targeted exclusively to $tierLabel members. Upgrade your membership plan to unlock this broadcast and marked chart setup immediately.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     Button(
-                        onClick = onOpenEnvelope,
+                        onClick = {
+                            SoundAndHapticFeedback.playClick(context)
+                            onUpgradePlanRequest()
+                        },
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp)
-                            .testTag("open_message_envelope_${message.id}")
+                            .testTag("upgrade_vip_broadcast_${message.id}")
                     ) {
-                        Text("1 New Message — Tap to Open", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "⚡ Upgrade to $tierLabel to Unlock",
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
-            }
-
-            // Opened Message State with Smooth Spring Reveal
-            AnimatedVisibility(
-                visible = isOpened,
-                enter = fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) +
-                    expandVertically(animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy))
-            ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+            } else {
+                // Unopened Envelope State for Eligible Members
+                AnimatedVisibility(
+                    visible = !isOpened,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(56.dp)
                         ) {
-                            if (message.isPinned) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer
-                                ) {
-                                    Text(
-                                        text = "📌 PINNED",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                            if (message.hasDisplayCategory()) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer
-                                ) {
-                                    Text(
-                                        text = message.category,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                    )
-                                }
-                            }
-                            if (message.hasDisplayRiskLevel()) {
-                                TradeRiskBadge(riskLevel = message.riskLevel)
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.MarkEmailUnread,
+                                    contentDescription = "New Unopened Message",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(28.dp)
+                                )
                             }
                         }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Trading Zone • 1 New Message",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (isRestrictedTier) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "👑 $tierLabel Broadcast",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFFBBF24),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Text(
+                            text = "Posted $dateStr by ${message.authorName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Button(
+                            onClick = {
+                                if (resolvedSig.isNotBlank()) {
+                                    SoundAndHapticFeedback.playTradeSignal(context, resolvedSig)
+                                } else {
+                                    SoundAndHapticFeedback.playSuccess(context)
+                                }
+                                onOpenEnvelope()
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("open_message_envelope_${message.id}")
+                        ) {
+                            Text("1 New Message — Tap to Open", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Opened Message State with Smooth Spring Reveal
+                AnimatedVisibility(
+                    visible = isOpened,
+                    enter = fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) +
+                        expandVertically(animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy))
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (message.isPinned) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = "📌 PINNED",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                                if (resolvedSig.isNotBlank()) {
+                                    TradeSignalTypeBadge(
+                                        signalType = resolvedSig,
+                                        onClick = {
+                                            SoundAndHapticFeedback.playTradeSignal(context, resolvedSig)
+                                        }
+                                    )
+                                }
+                                if (isRestrictedTier || isAdmin) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isRestrictedTier) {
+                                            Color(0xFFF59E0B).copy(alpha = 0.18f)
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                        }
+                                    ) {
+                                        Text(
+                                            text = if (isRestrictedTier) "👑 $tierLabel" else "👥 All Members",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isRestrictedTier) {
+                                                Color(0xFFFBBF24)
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                                if (message.hasDisplayCategory()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.secondaryContainer
+                                    ) {
+                                        Text(
+                                            text = message.category,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                                if (message.hasDisplayRiskLevel()) {
+                                    TradeRiskBadge(riskLevel = message.riskLevel)
+                                }
+                            }
 
                         if (isAdmin) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -727,7 +941,7 @@ private fun BroadcastMessageCard(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(message.linkTitle.ifBlank { "Open Reference Link" })
+                            Text(message.displayLinkTitle().ifBlank { "Open Reference Link" })
                         }
                     }
 
@@ -739,6 +953,7 @@ private fun BroadcastMessageCard(
                         onReact = onReact
                     )
                 }
+            }
             }
         }
     }

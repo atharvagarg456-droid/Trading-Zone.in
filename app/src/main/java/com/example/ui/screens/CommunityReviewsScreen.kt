@@ -625,6 +625,7 @@ fun CommunityReviewsScreen(
     if (showOwnerPnlDialog) {
         OwnerProfitEditorDialog(
             initialBanner = todayProfitBanner,
+            broadcastMessages = broadcastMessages,
             onDismiss = { showOwnerPnlDialog = false },
             onSave = { updatedBanner, alsoPostInFeed ->
                 onUpdateTodayProfitBannerAndCard(updatedBanner, alsoPostInFeed)
@@ -677,7 +678,8 @@ private fun OwnerTodayProfitBannerCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Surface(
                         shape = CircleShape,
@@ -692,13 +694,13 @@ private fun OwnerTodayProfitBannerCard(
                             )
                         }
                     }
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = if (banner.isProfit) "TODAY'S OWNER PROFIT" else "TODAY'S OWNER TRADE P&L",
+                                text = if (banner.isProfit) "TRADE SIGNAL PROFIT (AS PER CALL)" else "TRADE SIGNAL P&L (AS PER CALL)",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = profitColor
@@ -715,6 +717,14 @@ private fun OwnerTodayProfitBannerCard(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                        }
+                        if (banner.linkedBroadcastTitle.isNotBlank()) {
+                            Text(
+                                text = "📢 Broadcast Trade: ${banner.linkedBroadcastTitle}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
                         Row(
                             verticalAlignment = Alignment.Bottom,
@@ -753,7 +763,7 @@ private fun OwnerTodayProfitBannerCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit Today's P&L",
+                            contentDescription = "Edit Trade Signal P&L",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -827,7 +837,8 @@ private fun OwnerInFeedProfitTradeCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Verified,
@@ -835,12 +846,21 @@ private fun OwnerInFeedProfitTradeCard(
                         tint = profitColor,
                         modifier = Modifier.size(20.dp)
                     )
-                    Text(
-                        text = "${review.userName} • Official Trade Book Result",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = profitColor
-                    )
+                    Column {
+                        Text(
+                            text = "TRADE BROADCAST OUTCOME • ${parsed.instrumentText}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = profitColor
+                        )
+                        if (review.tradeMessageTitle.isNotBlank()) {
+                            Text(
+                                text = "Signal: ${review.tradeMessageTitle}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1125,6 +1145,7 @@ fun TelegramEmojiReactionRow(
     onReact: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     FlowRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1134,7 +1155,7 @@ fun TelegramEmojiReactionRow(
             val count = reactions[emoji] ?: 0
             val isMine = myReactedKeys.contains("$targetId|$emoji")
             val scale by animateFloatAsState(
-                targetValue = if (isMine) 1.06f else 1f,
+                targetValue = if (isMine) 1.08f else 1f,
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioMediumBouncy,
                     stiffness = Spring.StiffnessMedium
@@ -1154,7 +1175,10 @@ fun TelegramEmojiReactionRow(
                 modifier = Modifier
                     .scale(scale)
                     .clip(RoundedCornerShape(50))
-                    .clickable { onReact(emoji) }
+                    .clickable {
+                        com.example.util.SoundAndHapticFeedback.playTap(context)
+                        onReact(emoji)
+                    }
                     .testTag("react_${targetId}_$emoji"),
                 shape = RoundedCornerShape(50),
                 color = bgColor,
@@ -1195,38 +1219,87 @@ fun TelegramEmojiReactionRow(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OwnerProfitEditorDialog(
     initialBanner: TodayProfitBanner,
+    broadcastMessages: List<BroadcastMessage> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (TodayProfitBanner, Boolean) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var enabled by rememberSaveable { mutableStateOf(initialBanner.enabled) }
     var isProfit by rememberSaveable { mutableStateOf(initialBanner.isProfit) }
     var amountText by rememberSaveable { mutableStateOf(initialBanner.amountText) }
     var instrumentText by rememberSaveable { mutableStateOf(initialBanner.instrumentText) }
     var roiPercent by rememberSaveable { mutableStateOf(initialBanner.roiPercent) }
     var noteText by rememberSaveable { mutableStateOf(initialBanner.noteText) }
+    var linkedBroadcastTitle by rememberSaveable { mutableStateOf(initialBanner.linkedBroadcastTitle) }
     var alsoPostInFeed by rememberSaveable { mutableStateOf(true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Owner Today's Profit / Loss (P&L)",
+                text = "Trade Signal P&L (As Per Broadcast Call)",
                 fontWeight = FontWeight.ExtraBold
             )
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Publish the Profit or Loss achieved on the Trade Broadcast Message given to members.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Show Pinned Today's P&L Banner", style = MaterialTheme.typography.bodyMedium)
+                    Text("Show Pinned Trade P&L Banner", style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = enabled, onCheckedChange = { enabled = it })
                 }
+
+                if (broadcastMessages.isNotEmpty()) {
+                    Text(
+                        text = "Select Broadcast Trade Message:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        broadcastMessages.take(4).forEach { msg ->
+                            FilterChip(
+                                selected = linkedBroadcastTitle == msg.title,
+                                onClick = {
+                                    linkedBroadcastTitle = msg.title
+                                    if (msg.hasDisplayCategory()) {
+                                        instrumentText = msg.category
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = msg.title.take(26),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = linkedBroadcastTitle,
+                    onValueChange = { linkedBroadcastTitle = it },
+                    label = { Text("Broadcast Trade Headline / Call Reference") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
@@ -1237,7 +1310,7 @@ fun OwnerProfitEditorDialog(
                                 amountText = "+" + amountText.removePrefix("-")
                             }
                         },
-                        label = { Text("Today's Profit (+)", fontWeight = FontWeight.Bold) }
+                        label = { Text("Trade Profit (+)", fontWeight = FontWeight.Bold) }
                     )
                     FilterChip(
                         selected = !isProfit,
@@ -1247,14 +1320,14 @@ fun OwnerProfitEditorDialog(
                                 amountText = "-" + amountText.removePrefix("+")
                             }
                         },
-                        label = { Text("Today's Loss (-)", fontWeight = FontWeight.Bold) }
+                        label = { Text("Trade Loss (-)", fontWeight = FontWeight.Bold) }
                     )
                 }
 
                 OutlinedTextField(
                     value = amountText,
                     onValueChange = { amountText = it },
-                    label = { Text("Profit/Loss Number (e.g. +₹48,500)") },
+                    label = { Text("Trade Profit/Loss Amount (e.g. +₹48,500)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1270,7 +1343,7 @@ fun OwnerProfitEditorDialog(
                     OutlinedTextField(
                         value = roiPercent,
                         onValueChange = { roiPercent = it },
-                        label = { Text("ROI % (e.g. +18.4%)") },
+                        label = { Text("Move / ROI (e.g. +18.4%)") },
                         singleLine = true,
                         modifier = Modifier.weight(0.9f)
                     )
@@ -1279,7 +1352,7 @@ fun OwnerProfitEditorDialog(
                 OutlinedTextField(
                     value = noteText,
                     onValueChange = { noteText = it },
-                    label = { Text("Trade Summary Note") },
+                    label = { Text("Trade Call Outcome Note") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1296,7 +1369,7 @@ fun OwnerProfitEditorDialog(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Also post as a Verified P&L Trade Card in the Commodity feed with Telegram reactions",
+                        text = "Also post as a Trade Signal Outcome Card in the Commodity feed with Telegram reactions",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -1305,6 +1378,7 @@ fun OwnerProfitEditorDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    com.example.util.SoundAndHapticFeedback.playSuccess(context)
                     onSave(
                         TodayProfitBanner(
                             enabled = enabled,
@@ -1312,13 +1386,14 @@ fun OwnerProfitEditorDialog(
                             instrumentText = instrumentText.trim().ifBlank { "MCX GOLD & SILVER" },
                             roiPercent = roiPercent.trim().ifBlank { "+18.4%" },
                             isProfit = isProfit,
-                            noteText = noteText.trim().ifBlank { "Verified Intraday Booked Trade" }
+                            noteText = noteText.trim().ifBlank { "As per Trade Broadcast call — targets achieved" },
+                            linkedBroadcastTitle = linkedBroadcastTitle.trim().ifBlank { instrumentText.trim() }
                         ),
                         alsoPostInFeed
                     )
                 }
             ) {
-                Text("Publish P&L", fontWeight = FontWeight.Bold)
+                Text("Publish Trade P&L", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

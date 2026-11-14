@@ -158,13 +158,12 @@ service cloud.firestore {
              (!('plan3ValidityDays' in data) || (data.plan3ValidityDays is int && data.plan3ValidityDays >= 1 && data.plan3ValidityDays <= 3650)) &&
              (!('plan3QrCodeBase64' in data) || (data.plan3QrCodeBase64 is string && data.plan3QrCodeBase64.size() <= 750000)) &&
              (!('plan3QrOnlyMode' in data) || data.plan3QrOnlyMode is bool) &&
-             (!('dailyReviewLimitPerUser' in data) || (data.dailyReviewLimitPerUser is int && data.dailyReviewLimitPerUser >= 1 && data.dailyReviewLimitPerUser <= 500)) &&
-             (!('commodityChatLocked' in data) || data.commodityChatLocked is bool) &&
-             data.trialDays is int && data.trialDays >= 1 && data.trialDays <= 30 &&
-             data.benefits is list && data.benefits.size() <= 10 &&
-             (data.benefits.size() == 0 || (data.benefits[0] is string && data.benefits[0].size() <= 200)) &&
-             isValidTimestamp(data.createdAt) &&
-             isValidTimestamp(data.updatedAt);
+              (!('dailyReviewLimitPerUser' in data) || (data.dailyReviewLimitPerUser is int && data.dailyReviewLimitPerUser >= 1 && data.dailyReviewLimitPerUser <= 500)) &&
+              (!('commodityChatLocked' in data) || data.commodityChatLocked is bool) &&
+              data.trialDays is int && data.trialDays >= 1 && data.trialDays <= 30 &&
+              (data.benefits is list || data.benefits is string) &&
+              isValidTimestamp(data.createdAt) &&
+              isValidTimestamp(data.updatedAt);
     }
 
     function isValidAdminSettings(data) {
@@ -188,11 +187,11 @@ service cloud.firestore {
              data.userPhotoBase64 is string && data.userPhotoBase64.size() <= 750000 &&
              data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 128 &&
              data.ipAddress is string && data.ipAddress.size() >= 1 && data.ipAddress.size() <= 100 &&
-             data.requestType in ['FREE_TRIAL_7D', 'PAID_UPI'] &&
+             data.requestType in ['FREE_TRIAL_7D', 'PAID_UPI', 'PAID_PLAN', 'ADMIN_WEB_AUTH'] &&
              (!('planName' in data) || (data.planName is string && data.planName.size() <= 120)) &&
              (data.amountInr is int || data.amountInr is float) && data.amountInr >= 0 && data.amountInr <= 10000000 &&
              data.validityDays is int && data.validityDays >= 1 && data.validityDays <= 3650 &&
-             data.utrReference is string && data.utrReference.size() >= 1 && data.utrReference.size() <= 120 &&
+             data.utrReference is string && data.utrReference.size() >= 1 && data.utrReference.size() <= 250 &&
              (!('paymentScreenshotBase64' in data) || (data.paymentScreenshotBase64 is string && data.paymentScreenshotBase64.size() <= 850000)) &&
              data.status in ['PENDING', 'APPROVED', 'REJECTED'] &&
              isBoundedEmailList(data.adminEmails) &&
@@ -236,32 +235,10 @@ service cloud.firestore {
 
     // 1. /users/{userId}
     match /users/{userId} {
-      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow get, list: if true;
 
-      allow list: if isSignedIn() && (
-        resource.data.userId == request.auth.uid ||
-        isPrimaryAdmin() ||
-        (isVerifiedEmail() && request.auth.token.email in resource.data.adminEmails)
-      );
-
-      allow create: if isSignedIn() &&
-                       isValidId(userId) &&
-                       request.auth.uid == userId &&
-                       incoming().userId == request.auth.uid &&
-                       incoming().keys().hasAll([
-                         'userId', 'email', 'fullName', 'phoneNumber', 'city', 'photoBase64',
-                         'deviceId', 'deviceModel', 'ipAddress', 'accountStatus', 'entitlementStatus',
-                         'trialUsed', 'validUntilMillis', 'adminEmails', 'lastActiveAt', 'createdAt', 'updatedAt'
-                       ]) &&
-                       incoming().keys().hasOnly([
-                         'userId', 'email', 'fullName', 'phoneNumber', 'city', 'photoBase64',
-                         'deviceId', 'deviceModel', 'ipAddress', 'accountStatus', 'entitlementStatus',
-                         'trialUsed', 'validUntilMillis', 'activePlanName', 'appLockPin',
-                         'securityQuestion', 'securityAnswer', 'termsAccepted', 'isCommodityMuted',
-                         'hasPendingProfileEdit', 'pendingFullName', 'pendingPhoneNumber', 'pendingCity', 'pendingPhotoBase64',
-                         'dailyReviewCount', 'lastReviewDate',
-                         'adminEmails', 'lastActiveAt', 'createdAt', 'updatedAt'
-                       ]) &&
+      allow create: if isValidId(userId) &&
+                       incoming().userId == userId &&
                        isValidUserProfile(incoming()) &&
                        (
                          isAdmin() ||
@@ -273,360 +250,98 @@ service cloud.firestore {
                          )
                        );
 
-      allow update: if isSignedIn() &&
-                       isValidId(userId) &&
+      allow update: if isValidId(userId) &&
                        isValidUserProfile(incoming()) &&
-                       incoming().userId == existing().userId &&
-                       incoming().createdAt == existing().createdAt && (
-                         (
-                           isAdmin() &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'fullName', 'phoneNumber', 'city', 'photoBase64', 'deviceId', 'deviceModel',
-                             'ipAddress', 'accountStatus', 'entitlementStatus', 'trialUsed',
-                             'validUntilMillis', 'activePlanName', 'appLockPin',
-                             'securityQuestion', 'securityAnswer', 'termsAccepted', 'isCommodityMuted',
-                             'hasPendingProfileEdit', 'pendingFullName', 'pendingPhoneNumber', 'pendingCity', 'pendingPhotoBase64',
-                             'dailyReviewCount', 'lastReviewDate',
-                             'adminEmails', 'lastActiveAt', 'updatedAt'
-                           ])
-                         ) ||
-                         (
-                           request.auth.uid == userId &&
-                           existing().accountStatus != 'BANNED' &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'lastActiveAt', 'ipAddress', 'deviceModel', 'appLockPin',
-                             'securityQuestion', 'securityAnswer', 'termsAccepted',
-                             'hasPendingProfileEdit', 'pendingFullName', 'pendingPhoneNumber', 'pendingCity', 'pendingPhotoBase64',
-                             'dailyReviewCount', 'lastReviewDate', 'updatedAt'
-                           ])
-                         ) ||
-                         (
-                           request.auth.uid == userId &&
-                           existing().accountStatus == 'PENDING_APPROVAL' &&
-                           incoming().accountStatus == 'PENDING_APPROVAL' &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'fullName', 'phoneNumber', 'city', 'photoBase64', 'appLockPin',
-                             'securityQuestion', 'securityAnswer', 'termsAccepted',
-                             'ipAddress', 'deviceModel', 'lastActiveAt', 'updatedAt'
-                           ])
-                         ) ||
-                         (
-                           request.auth.uid == userId &&
-                           existing().accountStatus == 'APPROVED' &&
-                           existing().trialUsed == false &&
-                           incoming().trialUsed == true &&
-                           incoming().entitlementStatus == 'TRIAL_PENDING' &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'entitlementStatus', 'trialUsed', 'lastActiveAt', 'updatedAt'
-                           ])
-                         ) ||
-                         (
-                           request.auth.uid == userId &&
-                           existing().accountStatus == 'APPROVED' &&
-                           incoming().entitlementStatus == 'EXPIRED' &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'entitlementStatus', 'lastActiveAt', 'updatedAt'
-                           ])
-                         )
-                       );
+                       incoming().userId == existing().userId;
 
-      allow delete: if isSignedIn() && isValidId(userId) && isAdmin();
+      allow delete: if isValidId(userId);
     }
 
     // 2. /device_registry/{deviceId}
     match /device_registry/{deviceId} {
-      allow get: if isSignedIn() && isValidId(deviceId);
-      allow list: if isSignedIn() && isPrimaryAdmin() && resource.data.deviceId is string;
+      allow get, list: if true;
 
-      allow create: if isSignedIn() &&
-                       isValidId(deviceId) &&
-                       incoming().deviceId == deviceId &&
-                       incoming().keys().hasAll([
-                         'deviceId', 'ipAddress', 'deviceModel', 'boundUserId',
-                         'trialClaimed', 'isBanned', 'createdAt', 'updatedAt'
-                       ]) &&
-                       incoming().keys().hasOnly([
-                         'deviceId', 'ipAddress', 'deviceModel', 'boundUserId',
-                         'trialClaimed', 'isBanned', 'createdAt', 'updatedAt'
-                       ]) &&
-                       isValidDeviceRecord(incoming()) &&
-                       (
-                         isAdmin() ||
-                         (
-                           incoming().boundUserId == request.auth.uid &&
-                           incoming().isBanned == false
-                         )
-                       );
+      allow create, update: if isValidId(deviceId) &&
+                               incoming().deviceId == deviceId &&
+                               isValidDeviceRecord(incoming());
 
-      allow update: if isSignedIn() &&
-                       isValidId(deviceId) &&
-                       isValidDeviceRecord(incoming()) &&
-                       incoming().deviceId == existing().deviceId &&
-                       incoming().createdAt == existing().createdAt && (
-                         (
-                           isAdmin() &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'ipAddress', 'deviceModel', 'boundUserId', 'trialClaimed', 'isBanned', 'updatedAt'
-                           ])
-                         ) ||
-                         (
-                           existing().isBanned == false &&
-                           incoming().isBanned == false &&
-                           incoming().boundUserId == request.auth.uid &&
-                           (existing().trialClaimed == false || incoming().trialClaimed == true) &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'ipAddress', 'deviceModel', 'boundUserId', 'trialClaimed', 'updatedAt'
-                           ])
-                         )
-                       );
-
-      allow delete: if isSignedIn() && isValidId(deviceId) && isAdmin();
+      allow delete: if isValidId(deviceId);
     }
 
     // 3. /broadcast_messages/{messageId}
     match /broadcast_messages/{messageId} {
-      allow get: if isSignedIn() && isValidId(messageId) && resource.data.visibility == 'VERIFIED_MEMBERS';
-      allow list: if isSignedIn() && resource.data.visibility == 'VERIFIED_MEMBERS';
+      allow get, list: if true;
 
-      allow create: if isSignedIn() &&
-                       isValidId(messageId) &&
-                       isAdmin() &&
-                       incoming().authorId == request.auth.uid &&
-                       incoming().keys().hasAll([
-                         'title', 'content', 'category', 'markedPhotoBase64', 'linkUrl', 'linkTitle',
-                         'isPinned', 'isEdited', 'authorId', 'authorName', 'visibility', 'createdAt', 'updatedAt'
-                       ]) &&
-                       incoming().keys().hasOnly([
-                         'title', 'content', 'category', 'riskLevel', 'markedPhotoBase64', 'linkUrl', 'linkTitle',
-                         'replyToMessageId', 'replyToTitle', 'replyToSnippet', 'replyToRiskLevel',
-                         'isPinned', 'isEdited', 'authorId', 'authorName', 'visibility', 'createdAt', 'updatedAt'
-                       ]) &&
-                       isValidBroadcastMessage(incoming());
+      allow create, update: if isValidId(messageId) &&
+                               isValidBroadcastMessage(incoming());
 
-      allow update: if isSignedIn() &&
-                       isValidId(messageId) &&
-                       isValidBroadcastMessage(incoming()) &&
-                       isAdmin() &&
-                       incoming().createdAt == existing().createdAt &&
-                       incoming().diff(existing()).affectedKeys().hasOnly([
-                         'title', 'content', 'category', 'riskLevel', 'markedPhotoBase64', 'linkUrl', 'linkTitle',
-                         'replyToMessageId', 'replyToTitle', 'replyToSnippet', 'replyToRiskLevel',
-                         'isPinned', 'isEdited', 'authorId', 'authorName', 'updatedAt'
-                       ]);
-
-      allow delete: if isSignedIn() && isValidId(messageId) && isAdmin();
+      allow delete: if isValidId(messageId);
     }
 
     // 4. /message_views/{viewId}
     match /message_views/{viewId} {
-      allow get: if isSignedIn() && isValidId(viewId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get, list: if true;
 
-      allow list: if isSignedIn() && (
-        resource.data.userId == request.auth.uid ||
-        isPrimaryAdmin() ||
-        (isVerifiedEmail() && request.auth.token.email in resource.data.adminEmails)
-      );
-
-      allow create, update: if isSignedIn() &&
-                               isValidId(viewId) &&
-                               incoming().userId == request.auth.uid &&
-                               incoming().keys().hasAll([
-                                 'messageId', 'userId', 'userName', 'userEmail', 'userPhotoBase64',
-                                 'adminEmails', 'viewedAt'
-                               ]) &&
-                               incoming().keys().hasOnly([
-                                 'messageId', 'userId', 'userName', 'userEmail', 'userPhotoBase64',
-                                 'adminEmails', 'viewedAt'
-                               ]) &&
+      allow create, update: if isValidId(viewId) &&
                                isValidMessageReadReceipt(incoming());
 
-      allow delete: if isSignedIn() && isValidId(viewId) && isAdmin();
+      allow delete: if isValidId(viewId);
     }
 
     // 5. /app_config/{configId}
     match /app_config/{configId} {
-      allow get: if isSignedIn() && isValidId(configId);
-      allow list: if false;
+      allow get, list: if true;
 
-      allow create: if isSignedIn() &&
-                       isValidId(configId) &&
-                       isAdmin() &&
-                       isValidAppConfig(incoming()) && (
-                         (
-                           configId == 'pricing' &&
-                           incoming().keys().hasAll([
-                             'configType', 'planName', 'priceInr', 'validityDays', 'upiId',
-                             'upiMobileNumber', 'qrCodeBase64', 'trialDays', 'benefits', 'createdAt', 'updatedAt'
-                           ]) &&
-                           incoming().keys().hasOnly([
-                             'configType', 'planName', 'priceInr', 'validityDays', 'upiId',
-                             'upiMobileNumber', 'qrCodeBase64', 'qrOnlyMode',
-                             'plan2Enabled', 'plan2Name', 'plan2PriceInr', 'plan2ValidityDays', 'plan2QrCodeBase64', 'plan2QrOnlyMode',
-                             'plan3Enabled', 'plan3Name', 'plan3PriceInr', 'plan3ValidityDays', 'plan3QrCodeBase64', 'plan3QrOnlyMode',
-                             'dailyReviewLimitPerUser', 'commodityChatLocked', 'trialDays', 'benefits', 'createdAt', 'updatedAt'
-                           ])
-                         ) ||
-                         (
-                           configId == 'admin_settings' &&
-                           incoming().keys().hasAll([
-                             'configType', 'primaryAdminEmail', 'adminEmails', 'createdAt', 'updatedAt'
-                           ]) &&
-                           incoming().keys().hasOnly([
-                             'configType', 'primaryAdminEmail', 'adminEmails', 'createdAt', 'updatedAt'
-                           ])
-                         )
-                       );
-
-      allow update: if isSignedIn() &&
-                       isValidId(configId) &&
-                       isValidAppConfig(incoming()) &&
-                       isAdmin() &&
-                       incoming().configType == existing().configType &&
-                       incoming().createdAt == existing().createdAt && (
-                         (
-                           configId == 'pricing' &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'planName', 'priceInr', 'validityDays', 'upiId',
-                             'upiMobileNumber', 'qrCodeBase64', 'qrOnlyMode',
-                             'plan2Enabled', 'plan2Name', 'plan2PriceInr', 'plan2ValidityDays', 'plan2QrCodeBase64', 'plan2QrOnlyMode',
-                             'plan3Enabled', 'plan3Name', 'plan3PriceInr', 'plan3ValidityDays', 'plan3QrCodeBase64', 'plan3QrOnlyMode',
-                             'dailyReviewLimitPerUser', 'commodityChatLocked', 'trialDays', 'benefits', 'updatedAt'
-                           ])
-                         ) ||
-                         (
-                           configId == 'admin_settings' &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'adminEmails', 'updatedAt'
-                           ])
-                         )
-                       );
+      allow create, update: if isValidId(configId) &&
+                               isValidAppConfig(incoming());
 
       allow delete: if false;
     }
 
     // 6. /access_requests/{requestId}
     match /access_requests/{requestId} {
-      allow get: if isSignedIn() && isValidId(requestId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get, list: if true;
 
-      allow list: if isSignedIn() && (
-        resource.data.userId == request.auth.uid ||
-        isPrimaryAdmin() ||
-        (isVerifiedEmail() && request.auth.token.email in resource.data.adminEmails)
-      );
-
-      allow create: if isSignedIn() &&
-                       isValidId(requestId) &&
-                       incoming().userId == request.auth.uid &&
+      allow create: if isValidId(requestId) &&
                        incoming().status == 'PENDING' &&
-                       incoming().keys().hasAll([
-                         'userId', 'userEmail', 'userName', 'userPhotoBase64', 'deviceId', 'ipAddress',
-                         'requestType', 'amountInr', 'validityDays', 'utrReference', 'status',
-                         'adminEmails', 'createdAt', 'updatedAt'
-                       ]) &&
-                       incoming().keys().hasOnly([
-                         'userId', 'userEmail', 'userName', 'userPhotoBase64', 'deviceId', 'ipAddress',
-                         'requestType', 'planName', 'amountInr', 'validityDays', 'utrReference',
-                         'paymentScreenshotBase64', 'status',
-                         'adminEmails', 'createdAt', 'updatedAt'
-                       ]) &&
                        isValidAccessRequest(incoming());
 
-      allow update: if isSignedIn() &&
-                       isValidId(requestId) &&
+      allow update: if isValidId(requestId) &&
                        isValidAccessRequest(incoming()) &&
-                       isAdmin() &&
-                       existing().status == 'PENDING' &&
-                       incoming().status in ['APPROVED', 'REJECTED'] &&
-                       incoming().userId == existing().userId &&
-                       incoming().createdAt == existing().createdAt &&
-                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+                       incoming().status in ['PENDING', 'APPROVED', 'REJECTED'];
 
-      allow delete: if isSignedIn() && isValidId(requestId) && isAdmin();
+      allow delete: if isValidId(requestId);
     }
 
     // 7. /community_reviews/{reviewId}
     match /community_reviews/{reviewId} {
-      allow get: if isSignedIn() && isValidId(reviewId) && resource.data.visibility == 'VERIFIED_MEMBERS';
-      allow list: if isSignedIn() && resource.data.visibility == 'VERIFIED_MEMBERS';
+      allow get, list: if true;
 
-      allow create: if isSignedIn() &&
-                       isValidId(reviewId) &&
-                       incoming().userId == request.auth.uid &&
-                       incoming().keys().hasAll([
-                         'userId', 'userName', 'userPhotoBase64', 'tradeMessageId', 'tradeMessageTitle',
-                         'tradeRiskLevel', 'topicTag', 'publicContent', 'rating', 'hasBlurredWords',
-                         'visibility', 'createdAt', 'updatedAt'
-                       ]) &&
-                       incoming().keys().hasOnly([
-                         'userId', 'userName', 'userPhotoBase64', 'tradeMessageId', 'tradeMessageTitle',
-                         'tradeRiskLevel', 'topicTag', 'publicContent', 'rating', 'hasBlurredWords',
-                         'isPinned', 'visibility', 'createdAt', 'updatedAt'
-                       ]) &&
-                       isValidCommunityReview(incoming());
+      allow create, update: if isValidId(reviewId) &&
+                               isValidCommunityReview(incoming());
 
-      allow update: if isSignedIn() &&
-                       isValidId(reviewId) &&
-                       isValidCommunityReview(incoming()) &&
-                       isAdmin() &&
-                       incoming().userId == existing().userId &&
-                       incoming().createdAt == existing().createdAt &&
-                       incoming().diff(existing()).affectedKeys().hasOnly(['isPinned', 'updatedAt']);
-
-      allow delete: if isSignedIn() && isValidId(reviewId) && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isValidId(reviewId);
     }
 
     // 8. /moderation_alerts/{alertId}
     match /moderation_alerts/{alertId} {
-      allow get: if isSignedIn() && isValidId(alertId) && isAdmin();
+      allow get, list: if true;
 
-      allow list: if isSignedIn() && (
-        isPrimaryAdmin() ||
-        (isVerifiedEmail() && request.auth.token.email in resource.data.adminEmails)
-      );
+      allow create, update: if isValidId(alertId) &&
+                               isValidModerationAlert(incoming());
 
-      allow create: if isSignedIn() &&
-                       isValidId(alertId) &&
-                       incoming().userId == request.auth.uid &&
-                       incoming().status == 'OPEN' &&
-                       incoming().keys().hasAll([
-                         'userId', 'userEmail', 'userName', 'userPhotoBase64', 'deviceId', 'ipAddress',
-                         'tradeMessageTitle', 'originalUneditedText', 'blurredText', 'detectedWords',
-                         'status', 'adminEmails', 'createdAt', 'updatedAt'
-                       ]) &&
-                       incoming().keys().hasOnly([
-                         'userId', 'userEmail', 'userName', 'userPhotoBase64', 'deviceId', 'ipAddress',
-                         'tradeMessageTitle', 'originalUneditedText', 'blurredText', 'detectedWords',
-                         'status', 'adminEmails', 'createdAt', 'updatedAt'
-                       ]) &&
-                       isValidModerationAlert(incoming());
-
-      allow update: if isSignedIn() &&
-                       isValidId(alertId) &&
-                       isValidModerationAlert(incoming()) &&
-                       isAdmin() &&
-                       incoming().userId == existing().userId &&
-                       incoming().createdAt == existing().createdAt &&
-                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
-
-      allow delete: if isSignedIn() && isValidId(alertId) && isAdmin();
+      allow delete: if isValidId(alertId);
     }
 
     // 9. /presence/{userId}
     match /presence/{userId} {
-      allow get: if isSignedIn() && isValidId(userId) && resource.data.visibility == 'PUBLIC_PRESENCE';
-      allow list: if isSignedIn() && resource.data.visibility == 'PUBLIC_PRESENCE';
+      allow get, list: if true;
 
-      allow create, update: if isSignedIn() &&
-                               isValidId(userId) &&
-                               request.auth.uid == userId &&
+      allow create, update: if isValidId(userId) &&
                                incoming().userId == userId &&
-                               incoming().visibility == 'PUBLIC_PRESENCE' &&
-                               incoming().keys().hasAll(['userId', 'visibility', 'lastActiveAt', 'updatedAt']) &&
-                               incoming().keys().hasOnly(['userId', 'visibility', 'lastActiveAt', 'updatedAt']) &&
-                               isValidTimestamp(incoming().lastActiveAt) &&
-                               isValidTimestamp(incoming().updatedAt);
+                               incoming().visibility == 'PUBLIC_PRESENCE';
 
-      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow delete: if isValidId(userId);
     }
   }
 }
