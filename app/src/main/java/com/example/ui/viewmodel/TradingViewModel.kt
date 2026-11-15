@@ -48,7 +48,8 @@ class TradingViewModel(
     val ipAddress: String,
     networkConnectivityFlow: Flow<Boolean> = flowOf(true),
     private val onNewOrEditedMessageAlert: (BroadcastMessage) -> Unit = {},
-    private val onCyclePaymentReminderAlert: (isExpired: Boolean, daysLeft: Int) -> Unit = { _, _ -> }
+    private val onCyclePaymentReminderAlert: (isExpired: Boolean, daysLeft: Int) -> Unit = { _, _ -> },
+    private val onAdminApprovalOrSecurityAlert: (title: String, body: String) -> Unit = { _, _ -> }
 ) : ViewModel() {
 
     val isNetworkConnected: StateFlow<Boolean> = networkConnectivityFlow
@@ -135,12 +136,22 @@ class TradingViewModel(
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
 
+    private val _screenshotWarningMessage = MutableStateFlow<String?>(null)
+    val screenshotWarningMessage: StateFlow<String?> = _screenshotWarningMessage.asStateFlow()
+
     private val _isBusy = MutableStateFlow(false)
     val isBusy: StateFlow<Boolean> = _isBusy.asStateFlow()
 
     private var knownMessageSignatures = mutableMapOf<String, String>()
     private var hasInitializedMessages = false
     private var hasSentCycleAlertInSession = false
+    private var knownPendingUserIds = mutableSetOf<String>()
+    private var hasInitializedAdminUsers = false
+    private var knownPendingRequestIds = mutableSetOf<String>()
+    private var hasInitializedAdminRequests = false
+    private var knownOpenAlertIds = mutableSetOf<String>()
+    private var hasInitializedAdminAlerts = false
+    private var lastScreenshotStrikeMillis = 0L
 
     val adminSettings: StateFlow<AdminSettings> = repository.observeAdminSettings()
         .catch { emit(AdminSettings()) }
@@ -163,6 +174,10 @@ class TradingViewModel(
 
     val userProfile: StateFlow<UserProfile?> = repository.observeUserProfile(currentUserId)
         .onEach { profile ->
+            if (profile != null && profile.isTimedBanExpired()) {
+                securityPreferences.resetScreenshotStrikeCount(currentUserId)
+                repository.setDeviceBanStatus(profile, ban = false)
+            }
             if (profile != null && !hasSentCycleAlertInSession && !isUserAdmin.value) {
                 val daysLeft = profile.daysRemaining()
                 if (profile.accountStatus == "APPROVED" &&
@@ -354,6 +369,25 @@ class TradingViewModel(
         .flatMapLatest { admin ->
             if (admin) {
                 repository.observeAllUsersForAdmin(currentUserEmail)
+                    .onEach { users ->
+                        val pendingKeys = users.filter {
+                            it.accountStatus == "PENDING_APPROVAL" || it.hasPendingProfileEdit
+                        }.map { "${it.userId}_${it.accountStatus}_${it.hasPendingProfileEdit}" }.toSet()
+                        if (!hasInitializedAdminUsers) {
+                            knownPendingUserIds.addAll(pendingKeys)
+                            hasInitializedAdminUsers = true
+                        } else {
+                            val newPending = pendingKeys - knownPendingUserIds
+                            knownPendingUserIds.clear()
+                            knownPendingUserIds.addAll(pendingKeys)
+                            if (newPending.isNotEmpty() && _notificationsEnabled.value) {
+                                onAdminApprovalOrSecurityAlert(
+                                    "Trading Zone • Admin Approval Needed",
+                                    "${newPending.size} new member registration or profile edit awaiting approval."
+                                )
+                            }
+                        }
+                    }
                     .catch { emit(emptyList()) }
             } else {
                 flowOf(emptyList())
@@ -369,6 +403,24 @@ class TradingViewModel(
         .flatMapLatest { admin ->
             if (admin) {
                 repository.observeAllAccessRequestsForAdmin(currentUserEmail)
+                    .onEach { reqs ->
+                        val pendingIds = reqs.filter { it.status == "PENDING" }.map { it.id }.toSet()
+                        if (!hasInitializedAdminRequests) {
+                            knownPendingRequestIds.addAll(pendingIds)
+                            hasInitializedAdminRequests = true
+                        } else {
+                            val newlyAdded = reqs.filter { it.status == "PENDING" && it.id !in knownPendingRequestIds }
+                            knownPendingRequestIds.clear()
+                            knownPendingRequestIds.addAll(pendingIds)
+                            if (newlyAdded.isNotEmpty() && _notificationsEnabled.value) {
+                                val first = newlyAdded.first()
+                                onAdminApprovalOrSecurityAlert(
+                                    "Trading Zone • Approval Request (${newlyAdded.size})",
+                                    "${first.userName}: ${first.planName} awaiting your approval."
+                                )
+                            }
+                        }
+                    }
                     .catch { emit(emptyList()) }
             } else {
                 flowOf(emptyList())
@@ -384,6 +436,25 @@ class TradingViewModel(
         .flatMapLatest { admin ->
             if (admin) {
                 repository.observeModerationAlertsForAdmin(currentUserEmail)
+                    .onEach { alerts ->
+                        val activeIds = alerts.filter { it.status != "RESOLVED" }.map { it.id }.toSet()
+                        if (!hasInitializedAdminAlerts) {
+                            knownOpenAlertIds.addAll(activeIds)
+                            hasInitializedAdminAlerts = true
+                        } else {
+                            val newlyAdded = alerts.filter { it.status != "RESOLVED" && it.id !in knownOpenAlertIds }
+                            knownOpenAlertIds.clear()
+                            knownOpenAlertIds.addAll(activeIds)
+                            if (newlyAdded.isNotEmpty() && _notificationsEnabled.value) {
+                                val first = newlyAdded.first()
+                                val isScreenshot = first.detectedWords.contains("SCREENSHOT", ignoreCase = true)
+                                onAdminApprovalOrSecurityAlert(
+                                    if (isScreenshot) "🚨 Screenshot Attempt Alert!" else "🛡️ Security Moderation Alert",
+                                    "${first.userName}: ${first.originalUneditedText}"
+                                )
+                            }
+                        }
+                    }
                     .catch { emit(emptyList()) }
             } else {
                 flowOf(emptyList())
@@ -440,6 +511,10 @@ class TradingViewModel(
 
     fun clearStatusMessage() {
         _statusMessage.value = null
+    }
+
+    fun clearScreenshotWarning() {
+        _screenshotWarningMessage.value = null
     }
 
     fun completeInitialAppLockSetup(
@@ -1011,13 +1086,24 @@ class TradingViewModel(
         }
     }
 
-    fun setDeviceBanStatus(user: UserProfile, ban: Boolean) {
+    fun setDeviceBanStatus(
+        user: UserProfile,
+        ban: Boolean,
+        banDurationMillis: Long = 0L,
+        banDurationLabel: String = "Permanent"
+    ) {
         viewModelScope.launch {
             val userDevices = allDevicesForAdmin.value.filter { it.boundUserId == user.userId }
-            repository.setDeviceBanStatus(user, ban, userDevices)
+            repository.setDeviceBanStatus(
+                user = user,
+                ban = ban,
+                allUserDevices = userDevices,
+                banDurationMillis = banDurationMillis,
+                banDurationLabel = banDurationLabel
+            )
                 .onSuccess {
                     if (!ban) {
-                        // Also resolve any open moderation alerts or pending unban appeals for this user
+                        securityPreferences.resetScreenshotStrikeCount(user.userId)
                         moderationAlertsForAdmin.value
                             .filter { it.userId == user.userId && it.status != "RESOLVED" }
                             .forEach { alert ->
@@ -1030,12 +1116,41 @@ class TradingViewModel(
                             }
                     }
                     _statusMessage.value = if (ban) {
-                        "Suspended ${user.fullName.ifBlank { user.email }} and banned hardware device(s)."
+                        "Suspended ${user.fullName.ifBlank { user.email }} ($banDurationLabel) and banned hardware device(s)."
                     } else {
                         "Unbanned ${user.fullName.ifBlank { user.email }} & all devices — Second Chance granted!"
                     }
                 }
                 .onFailure { _statusMessage.value = it.localizedMessage ?: "Failed to update ban." }
+        }
+    }
+
+    fun recordScreenshotStrike() {
+        if (isUserAdmin.value) return
+        val now = System.currentTimeMillis()
+        if (now - lastScreenshotStrikeMillis < 3000L) return
+        lastScreenshotStrikeMillis = now
+
+        val strike = securityPreferences.incrementScreenshotStrikeCount(currentUserId)
+        if (strike == 1) {
+            _screenshotWarningMessage.value =
+                "⚠️ Screenshot Not Allowed (Warning 1/2): The Admin has been notified of your screenshot attempt. " +
+                    "If you try to take a screenshot again, your account and device will be automatically blocked for 24 hours."
+        } else {
+            _screenshotWarningMessage.value =
+                "🚫 2nd Screenshot Attempt Detected: Your account and device have been automatically blocked for 24 hours " +
+                    "as per Trading Zone security policy."
+        }
+
+        viewModelScope.launch {
+            repository.recordScreenshotAttemptAlertAndAutoBan(
+                profile = userProfile.value,
+                userEmail = currentUserEmail,
+                deviceId = deviceId,
+                ipAddress = ipAddress,
+                strikeCount = strike,
+                adminEmails = adminSettings.value.adminEmails
+            )
         }
     }
 
@@ -1556,15 +1671,20 @@ class TradingViewModel(
             _statusMessage.value = "Only the Primary Admin ($PRIMARY_ADMIN_EMAIL) can verify Admin/Co-Admin Website logins."
             return false
         }
-        if (approve && !verifyAppPassword(enteredMainAdminPassword)) {
-            _statusMessage.value = "Invalid Main Admin App Password! Verification denied."
+        val isBiometricVerified = enteredMainAdminPassword == "__BIOMETRIC_VERIFIED__"
+        if (approve && !isBiometricVerified && !verifyAppPassword(enteredMainAdminPassword)) {
+            _statusMessage.value = "Invalid Main Admin App Password! Use Biometric Fingerprint/Face or enter your Main Admin App Password."
             return false
         }
         viewModelScope.launch {
             repository.reviewAccessRequest(request, approve)
                 .onSuccess {
                     _statusMessage.value = if (approve) {
-                        "Verified & Approved Website login for ${request.userEmail}!"
+                        if (isBiometricVerified) {
+                            "Verified with Biometric & Approved Website login for ${request.userEmail}!"
+                        } else {
+                            "Verified & Approved Website login for ${request.userEmail}!"
+                        }
                     } else {
                         "Blocked & Rejected Website login for ${request.userEmail}."
                     }

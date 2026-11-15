@@ -237,58 +237,38 @@ fun MembershipScreen(
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                    modifier = Modifier.size(48.dp)
                                 ) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                        modifier = Modifier.size(48.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.Default.Shield,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(26.dp)
-                                            )
-                                        }
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "OWNER LIFETIME VIP MASTER",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "Platform Owner • No Subscription Payment Needed",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Shield,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(26.dp)
                                         )
                                     }
                                 }
-                                AssistChip(
-                                    onClick = { showBuyerPreviewForAdmin = !showBuyerPreviewForAdmin },
-                                    label = {
-                                        Text(
-                                            if (showBuyerPreviewForAdmin) "Hide Buyer View" else "Preview Buyer View",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.Visibility,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "OWNER LIFETIME VIP MASTER",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Platform Owner • No Subscription Payment Needed",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
 
                             Text(
@@ -308,7 +288,20 @@ fun MembershipScreen(
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Add Custom Plan", fontWeight = FontWeight.Bold)
+                                    Text("Add Custom Plan", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                                }
+                                OutlinedButton(
+                                    onClick = { showBuyerPreviewForAdmin = !showBuyerPreviewForAdmin },
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        if (showBuyerPreviewForAdmin) "Hide Buyer View" else "Preview Buyer View",
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
                                 OutlinedButton(
                                     onClick = { onBulkExtendSubscribers(7) },
@@ -316,13 +309,13 @@ fun MembershipScreen(
                                 ) {
                                     Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Gift +7 Days to All Active")
+                                    Text("Gift +7 Days", maxLines = 1, softWrap = false)
                                 }
                                 OutlinedButton(
                                     onClick = { onBulkExtendSubscribers(30) },
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Text("Gift +30 Days to All Active")
+                                    Text("Gift +30 Days", maxLines = 1, softWrap = false)
                                 }
                             }
                         }
@@ -699,7 +692,10 @@ fun MembershipScreen(
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp)
                                 ) {
                                     Surface(
                                         shape = CircleShape,
@@ -714,18 +710,22 @@ fun MembershipScreen(
                                             )
                                         }
                                     }
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = profile?.activePlanName?.ifBlank {
                                                 stringResource(R.string.membership_title)
                                             } ?: stringResource(R.string.membership_title),
                                             style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
                                             text = "Status: ${profile?.entitlementStatus ?: "NONE"}",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -736,7 +736,9 @@ fun MembershipScreen(
                                     label = {
                                         Text(
                                             text = if (daysLeft > 0) "$daysLeft Days Left" else "Inactive",
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     },
                                     colors = AssistChipDefaults.assistChipColors(

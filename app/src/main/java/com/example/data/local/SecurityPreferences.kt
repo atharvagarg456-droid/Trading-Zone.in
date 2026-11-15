@@ -234,6 +234,23 @@ class SecurityPreferences(context: Context) {
         prefs.edit().putBoolean("trusted_device_login_${userId}_${deviceId}", trusted).apply()
     }
 
+    fun getScreenshotStrikeCount(userId: String): Int {
+        if (userId.isBlank()) return 0
+        return prefs.getInt("screenshot_strikes_$userId", 0).coerceAtLeast(0)
+    }
+
+    fun incrementScreenshotStrikeCount(userId: String): Int {
+        if (userId.isBlank()) return 1
+        val next = getScreenshotStrikeCount(userId) + 1
+        prefs.edit().putInt("screenshot_strikes_$userId", next).apply()
+        return next
+    }
+
+    fun resetScreenshotStrikeCount(userId: String) {
+        if (userId.isBlank()) return
+        prefs.edit().putInt("screenshot_strikes_$userId", 0).apply()
+    }
+
     private fun sha256(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
         return digest.joinToString("") { "%02x".format(it) }

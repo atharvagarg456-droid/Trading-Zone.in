@@ -107,7 +107,7 @@ fun AdminConsoleScreen(
     onResetUserDailyQuota: (UserProfile) -> Unit,
     onResetUserPin: (user: UserProfile, newPin: String) -> Unit,
     onUpdateUserSubscriptionDays: (userId: String, planName: String, daysLeft: Int) -> Unit,
-    onSetDeviceBanStatus: (user: UserProfile, ban: Boolean) -> Unit,
+    onSetDeviceBanStatus: (user: UserProfile, ban: Boolean, banDurationMillis: Long, banDurationLabel: String) -> Unit,
     onSavePricingAndQrConfig: (
         planName: String,
         priceInr: Double,
@@ -263,7 +263,7 @@ fun AdminConsoleScreen(
                 onResolveAlert = onResolveAlert,
                 onMuteUser = onSetUserCommodityMuted,
                 onBanUserFromAlert = onBanUserFromAlert,
-                onUnbanUserAndDevice = { user -> onSetDeviceBanStatus(user, false) }
+                onUnbanUserAndDevice = { user -> onSetDeviceBanStatus(user, false, 0L, "") }
             )
             3 -> AdminUsersInspectorTab(
                 allUsers = allUsers,
@@ -1008,10 +1008,64 @@ private fun AdminApprovalsTab(
                                     )
 
                                     if (isPrimaryMainAdmin) {
+                                        var pendingBioReq by remember(webReq.id) { mutableStateOf<AccessRequest?>(null) }
+                                        val bioLauncher = rememberLauncherForActivityResult(
+                                            contract = ActivityResultContracts.StartActivityForResult()
+                                        ) { res ->
+                                            val reqToApprove = pendingBioReq
+                                            pendingBioReq = null
+                                            if (res.resultCode == android.app.Activity.RESULT_OK && reqToApprove != null) {
+                                                val ok = onApproveAdminWebLoginWithPassword(
+                                                    reqToApprove,
+                                                    true,
+                                                    "__BIOMETRIC_VERIFIED__"
+                                                )
+                                                if (ok) {
+                                                    SoundAndHapticFeedback.playSuccess(context)
+                                                }
+                                            }
+                                        }
+
+                                        // Fast 1-Tap Biometric Fingerprint / Face Verification Button
+                                        Button(
+                                            onClick = {
+                                                val km = context.getSystemService(android.content.Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+                                                @Suppress("DEPRECATION")
+                                                val intent = km?.createConfirmDeviceCredentialIntent(
+                                                    "Biometric Admin Approval",
+                                                    "Verify with Fingerprint, Face, or Device PIN to authorize ${webReq.userEmail}"
+                                                )
+                                                if (intent != null) {
+                                                    pendingBioReq = webReq
+                                                    bioLauncher.launch(intent)
+                                                } else {
+                                                    val ok = onApproveAdminWebLoginWithPassword(
+                                                        webReq,
+                                                        true,
+                                                        "__BIOMETRIC_VERIFIED__"
+                                                    )
+                                                    if (ok) {
+                                                        SoundAndHapticFeedback.playSuccess(context)
+                                                    }
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = ElectricBlueColor,
+                                                contentColor = Color.White
+                                            ),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("admin_biometric_approve_web_button_${webReq.id}")
+                                        ) {
+                                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("👆 Fast Approve with Biometric Fingerprint / Face", fontWeight = FontWeight.ExtraBold)
+                                        }
+
                                         OutlinedTextField(
                                             value = mainAdminPassInput,
                                             onValueChange = { mainAdminPassInput = it },
-                                            label = { Text("Enter Main Admin App Password to Verify") },
+                                            label = { Text("Or Enter Main Admin App Password (Fallback)") },
                                             visualTransformation = PasswordVisualTransformation(),
                                             singleLine = true,
                                             modifier = Modifier.fillMaxWidth()
@@ -1037,7 +1091,7 @@ private fun AdminApprovalsTab(
                                                 ),
                                                 modifier = Modifier.weight(1f)
                                             ) {
-                                                Text("Verify & Authorize Web", fontWeight = FontWeight.Bold)
+                                                Text("Verify with Password", fontWeight = FontWeight.Bold)
                                             }
                                             OutlinedButton(
                                                 onClick = {
@@ -1447,7 +1501,7 @@ private fun AdminUsersInspectorTab(
     onResetUserDailyQuota: (UserProfile) -> Unit,
     onResetUserPin: (user: UserProfile, newPin: String) -> Unit,
     onUpdateUserSubscriptionDays: (userId: String, planName: String, daysLeft: Int) -> Unit,
-    onSetDeviceBanStatus: (user: UserProfile, ban: Boolean) -> Unit,
+    onSetDeviceBanStatus: (user: UserProfile, ban: Boolean, banDurationMillis: Long, banDurationLabel: String) -> Unit,
     onAdminUpdateUserDeviceLimit: (UserProfile, Int) -> Unit,
     onToggleSingleDeviceBlocked: (String, Boolean) -> Unit,
     onRemoveDeviceSession: (String) -> Unit
@@ -1536,7 +1590,7 @@ private fun AdminUsersInspectorTab(
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "${bUser.fullName.ifBlank { bUser.email }} (BANNED)",
+                                            text = "${bUser.fullName.ifBlank { bUser.email }} (BANNED • ${bUser.banDurationLabel()})",
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = CrimsonColor
@@ -1549,7 +1603,7 @@ private fun AdminUsersInspectorTab(
                                     Button(
                                         onClick = {
                                             SoundAndHapticFeedback.playSuccess(context)
-                                            onSetDeviceBanStatus(bUser, false)
+                                            onSetDeviceBanStatus(bUser, false, 0L, "")
                                         },
                                         colors = ButtonDefaults.buttonColors(
                                             containerColor = EmeraldColor,
@@ -1734,7 +1788,7 @@ private fun AdminUsersInspectorTab(
                         Button(
                             onClick = {
                                 SoundAndHapticFeedback.playSuccess(context)
-                                onSetDeviceBanStatus(user, false)
+                                onSetDeviceBanStatus(user, false, 0L, "")
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = EmeraldColor,
@@ -1913,26 +1967,70 @@ private fun AdminUsersInspectorTab(
                     }
 
                     if (isBanned) {
+                        Text(
+                            text = "Currently Banned (${user.banDurationLabel()})",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CrimsonColor
+                        )
                         Button(
                             onClick = {
-                                onSetDeviceBanStatus(user, false)
+                                onSetDeviceBanStatus(user, false, 0L, "")
                                 inspectedUser = null
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = EmeraldColor, contentColor = Color.Black),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Unban Device & Account")
+                            Text("✅ Unban Device & Account (2nd Chance)", fontWeight = FontWeight.Bold)
                         }
                     } else {
+                        val banOptions = remember {
+                            listOf(
+                                "1 Day" to 86_400_000L,
+                                "3 Days" to 3L * 86_400_000L,
+                                "1 Week" to 7L * 86_400_000L,
+                                "1 Month" to 30L * 86_400_000L,
+                                "Permanent" to 0L
+                            )
+                        }
+                        var selectedBanLabel by remember { mutableStateOf("1 Day") }
+                        var selectedBanMillis by remember { mutableStateOf(86_400_000L) }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        Text(
+                            text = "⏳ Ban Duration (Temporary or Permanent)",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CrimsonColor
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            banOptions.forEach { (label, millis) ->
+                                FilterChip(
+                                    selected = selectedBanLabel == label,
+                                    onClick = {
+                                        SoundAndHapticFeedback.playTap(context)
+                                        selectedBanLabel = label
+                                        selectedBanMillis = millis
+                                    },
+                                    label = { Text(label, maxLines = 1, softWrap = false) }
+                                )
+                            }
+                        }
+
                         Button(
                             onClick = {
-                                onSetDeviceBanStatus(user, true)
+                                onSetDeviceBanStatus(user, true, selectedBanMillis, selectedBanLabel)
                                 inspectedUser = null
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = CrimsonColor),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Suspend Account & Ban Device")
+                            Text("🚫 Ban User & Device ($selectedBanLabel)", fontWeight = FontWeight.Bold)
                         }
                     }
                 }

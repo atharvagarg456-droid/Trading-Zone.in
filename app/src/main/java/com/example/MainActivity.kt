@@ -18,10 +18,18 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -175,6 +183,14 @@ class MainActivity : FragmentActivity() {
                                                 isExpired = isExpired,
                                                 daysLeft = daysLeft
                                             )
+                                        },
+                                        onAdminApprovalOrSecurityAlert = { title, body ->
+                                            SoundAndHapticFeedback.playAlertOrError(appContext)
+                                            NotificationHelper.showAdminApprovalNotification(
+                                                context = appContext,
+                                                title = title,
+                                                body = body
+                                            )
                                         }
                                     ) as T
                                 }
@@ -254,12 +270,27 @@ fun AuthenticatedTradingWorkspace(
     val moderationAlertsForAdmin by viewModel.moderationAlertsForAdmin.collectAsStateWithLifecycle()
     val installedFirmwareStamp by viewModel.installedFirmwareStamp.collectAsStateWithLifecycle()
     val statusMessage by viewModel.statusMessage.collectAsStateWithLifecycle()
+    val screenshotWarningMessage by viewModel.screenshotWarningMessage.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableStateOf(MainNavTab.STREAM) }
     var editingMessage by remember { mutableStateOf<BroadcastMessage?>(null) }
     var replyingToMessage by remember { mutableStateOf<BroadcastMessage?>(null) }
     var showQuickQrShareDialog by remember { mutableStateOf(false) }
+    var showTelegramQuickDrawer by remember { mutableStateOf(false) }
+
+    val totalPendingAdminApprovals = remember(isAdmin, allUsersForAdmin, allAccessRequestsForAdmin, moderationAlertsForAdmin) {
+        if (!isAdmin) {
+            0
+        } else {
+            val pendingRegsAndEdits = allUsersForAdmin.count {
+                it.accountStatus == "PENDING_APPROVAL" || it.hasPendingProfileEdit
+            }
+            val pendingReqs = allAccessRequestsForAdmin.count { it.status == "PENDING" }
+            val openAlerts = moderationAlertsForAdmin.count { it.status != "RESOLVED" }
+            pendingRegsAndEdits + pendingReqs + openAlerts
+        }
+    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -270,6 +301,36 @@ fun AuthenticatedTradingWorkspace(
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         TradingBackgroundService.start(context)
+    }
+
+    // Anti-Screenshot Detection Observer (1st attempt warns user + alerts Admin; 2nd attempt blocks for 24 hours)
+    DisposableEffect(viewModel.currentUserId, isAdmin) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: android.net.Uri?) {
+                super.onChange(selfChange, uri)
+                if (!isAdmin) {
+                    val uriStr = uri?.toString()?.lowercase().orEmpty()
+                    if (uriStr.contains("media") || uriStr.contains("images") || uriStr.contains("screenshot")) {
+                        SoundAndHapticFeedback.playAlertOrError(context)
+                        viewModel.recordScreenshotStrike()
+                    }
+                }
+            }
+        }
+        try {
+            context.contentResolver.registerContentObserver(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                true,
+                observer
+            )
+        } catch (_: Exception) {
+        }
+        onDispose {
+            try {
+                context.contentResolver.unregisterContentObserver(observer)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     LaunchedEffect(statusMessage) {
@@ -314,20 +375,36 @@ fun AuthenticatedTradingWorkspace(
             Column {
                 TopAppBar(
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clickable {
+                                    com.example.util.SoundAndHapticFeedback.playTap(context)
+                                    showTelegramQuickDrawer = true
+                                }
+                                .testTag("top_bar_trading_zone_title_button")
+                        ) {
                             com.example.ui.components.TradingZonePremiumLogo(
                                 size = 34.dp,
                                 animated = true
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Trading Zone",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Open Quick Customization Menu",
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                                 Text(
-                                    text = "Trading Zone",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                                Text(
-                                    text = if (isAdmin) "Admin Studio • Live" else "Advisory & Commodity Stream",
+                                    text = if (isAdmin) "Tap for Quick Controls • Live" else "Tap for Quick Customization",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -335,6 +412,41 @@ fun AuthenticatedTradingWorkspace(
                         }
                     },
                     actions = {
+                        // Live Admin Pending Approvals & Security Alerts Badge in Top Bar
+                        if (isAdmin && totalPendingAdminApprovals > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFFF59E0B).copy(alpha = 0.22f),
+                                border = BorderStroke(1.dp, Color(0xFFF59E0B)),
+                                modifier = Modifier
+                                    .padding(end = 4.dp)
+                                    .clickable {
+                                        com.example.util.SoundAndHapticFeedback.playClick(context)
+                                        selectedTab = MainNavTab.ADMIN
+                                    }
+                                    .testTag("top_bar_admin_approvals_badge")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.NotificationsActive,
+                                        contentDescription = "Pending Approvals",
+                                        tint = Color(0xFFF59E0B),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "$totalPendingAdminApprovals",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFF59E0B)
+                                    )
+                                }
+                            }
+                        }
+
                         // 1-Tap Look-Changer UI Theme Switcher in TopAppBar
                         IconButton(
                             onClick = {
@@ -374,22 +486,22 @@ fun AuthenticatedTradingWorkspace(
                                 color = Color(0xFFEF4444).copy(alpha = 0.2f),
                                 border = BorderStroke(1.dp, Color(0xFFEF4444)),
                                 modifier = Modifier
-                                    .padding(end = 8.dp)
+                                    .padding(end = 4.dp)
                                     .testTag("top_bar_no_network_symbol")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.SignalWifiOff,
                                         contentDescription = "No Network Connected",
                                         tint = Color(0xFFEF4444),
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(15.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "No Network",
+                                        text = "No Net",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFEF4444)
@@ -406,7 +518,7 @@ fun AuthenticatedTradingWorkspace(
                                 } else {
                                     Color(0xFFF59E0B).copy(alpha = 0.16f)
                                 },
-                                modifier = Modifier.padding(end = 8.dp)
+                                modifier = Modifier.padding(end = 4.dp)
                             ) {
                                 Text(
                                     text = when {
@@ -416,12 +528,26 @@ fun AuthenticatedTradingWorkspace(
                                         days > 0 -> "ACTIVE • ${days}d"
                                         else -> "EXPIRED"
                                     },
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = if (entitled) Color(0xFF10B981) else Color(0xFFF59E0B)
                                 )
                             }
+                        }
+
+                        // Telegram-style Three-Dot (⋮) Quick Customization & Admin Tools Menu Button
+                        IconButton(
+                            onClick = {
+                                com.example.util.SoundAndHapticFeedback.playTap(context)
+                                showTelegramQuickDrawer = true
+                            },
+                            modifier = Modifier.testTag("top_bar_three_dot_menu_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Open Telegram-Style Quick Customization & Tools Drawer"
+                            )
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -735,6 +861,27 @@ fun AuthenticatedTradingWorkspace(
                                     },
                                     onDeleteMessageRequest = { msgId ->
                                         viewModel.deleteMessage(msgId)
+                                    },
+                                    onQuickPublishBroadcast = { title, content, targetTier, signalType, photoBase64 ->
+                                        val encodedLinkTitle = BroadcastMessage.encodeLinkTitleWithMeta(
+                                            plainLinkTitle = "",
+                                            targetTier = targetTier,
+                                            signalType = signalType
+                                        )
+                                        viewModel.publishMessage(
+                                            title = title,
+                                            content = content,
+                                            category = "NONE",
+                                            riskLevel = "MEDIUM",
+                                            markedPhotoBase64 = photoBase64,
+                                            linkUrl = "",
+                                            linkTitle = encodedLinkTitle,
+                                            isPinned = false,
+                                            replyToMessageId = "",
+                                            replyToTitle = "",
+                                            replyToSnippet = "",
+                                            replyToRiskLevel = ""
+                                        )
                                     }
                                 )
                             }
@@ -775,6 +922,9 @@ fun AuthenticatedTradingWorkspace(
                                     },
                                     onClearUnpinnedCommodityMessages = {
                                         viewModel.clearUnpinnedCommodityMessages()
+                                    },
+                                    onApplyDailyMessageLimit = { newLimit ->
+                                        viewModel.applyDailyMessageLimitNow(newLimit)
                                     }
                                 )
                             }
@@ -910,7 +1060,9 @@ fun AuthenticatedTradingWorkspace(
                                     onUpdateUserSubscriptionDays = { uid, plan, days ->
                                         viewModel.updateUserSubscriptionDays(uid, plan, days)
                                     },
-                                    onSetDeviceBanStatus = { u, ban -> viewModel.setDeviceBanStatus(u, ban) },
+                                    onSetDeviceBanStatus = { u, ban, durMillis, durLabel ->
+                                        viewModel.setDeviceBanStatus(u, ban, durMillis, durLabel)
+                                    },
                                     onSavePricingAndQrConfig = { p1Name, p1Price, p1Days, upi, mobile, p1Qr, p1Only, p2En, p2Name, p2Price, p2Days, p2Qr, p2Only, p3En, p3Name, p3Price, p3Days, p3Qr, p3Only, limit, locked, trialDays, benefits ->
                                         viewModel.savePricingAndQrConfig(
                                             p1Name, p1Price, p1Days, upi, mobile, p1Qr, p1Only,
@@ -960,10 +1112,238 @@ fun AuthenticatedTradingWorkspace(
         }
     }
 
+    // Screenshot Policy Warning / Auto-Ban Dialog
+    screenshotWarningMessage?.let { warningText ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearScreenshotWarning() },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFFEF4444))
+                    Text("Screenshot Security Policy", fontWeight = FontWeight.ExtraBold)
+                }
+            },
+            text = {
+                Text(
+                    text = warningText,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.clearScreenshotWarning() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("I Understand", fontWeight = FontWeight.Bold)
+                }
+            },
+            modifier = Modifier.testTag("screenshot_warning_dialog")
+        )
+    }
+
+    // Telegram-Style Quick Customization & Admin Tools Drawer Dialog (Opened via "Trading Zone" title or ⋮ button)
+    if (showTelegramQuickDrawer) {
+        AlertDialog(
+            onDismissRequest = { showTelegramQuickDrawer = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = null, tint = Color(0xFF10B981))
+                        Text("Trading Zone Quick Hub", fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 1. Theme Skin Customization
+                    Text(
+                        text = "🎨 Instant Theme Skins",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF10B981)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        AppThemePreference.entries.forEach { pref ->
+                            FilterChip(
+                                selected = themePreference == pref,
+                                onClick = {
+                                    com.example.util.SoundAndHapticFeedback.playTap(context)
+                                    onChangeTheme(pref)
+                                },
+                                label = { Text(pref.title, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    // 2. Display, Sound & Notification Customization
+                    Text(
+                        text = "⚡ Display, Sound & Haptics",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF10B981)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Compact Feed Layout", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Switch(checked = compactFeedMode, onCheckedChange = { viewModel.setCompactFeedMode(it) })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Large Readable Text", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Switch(checked = largeTextMode, onCheckedChange = { viewModel.setLargeTextMode(it) })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Trade Signal Haptic Vibrations", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Switch(checked = highRiskVibrationEnabled, onCheckedChange = { viewModel.setHighRiskVibrationPreference(it) })
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Instant Trade & Approval Notifications", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Switch(checked = notificationsEnabled, onCheckedChange = { viewModel.setNotificationsPreference(it) })
+                    }
+
+                    // 3. Admin Quick Tools (Room Lock, Daily Msg Limit, Approvals, Write Broadcast)
+                    if (isAdmin) {
+                        HorizontalDivider()
+                        Text(
+                            text = "👑 Admin Quick Controls",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFFF59E0B)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (pricingConfig.commodityChatLocked) "Commodity Room Locked" else "Commodity Room Open",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Switch(
+                                checked = pricingConfig.commodityChatLocked,
+                                onCheckedChange = { viewModel.setCommodityChatLocked(it) }
+                            )
+                        }
+
+                        Text(
+                            text = "Daily Message Limit per Member:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(1L, 2L, 3L, 5L, 10L).forEach { lim ->
+                                FilterChip(
+                                    selected = pricingConfig.dailyReviewLimitPerUser == lim,
+                                    onClick = {
+                                        com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                        viewModel.applyDailyMessageLimitNow(lim)
+                                    },
+                                    label = { Text("${lim}/day", maxLines = 1, softWrap = false) }
+                                )
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    showTelegramQuickDrawer = false
+                                    selectedTab = MainNavTab.ADMIN
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = if (totalPendingAdminApprovals > 0) "🔔 Approvals ($totalPendingAdminApprovals)" else "Admin Studio",
+                                    maxLines = 1
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    showTelegramQuickDrawer = false
+                                    selectedTab = MainNavTab.SETTINGS
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Full Settings", maxLines = 1)
+                            }
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    // 4. Simplified 2-Button Share (Website & Android App)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                showTelegramQuickDrawer = false
+                                showQuickQrShareDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981),
+                                contentColor = Color.Black
+                            ),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.QrCode2, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Website & APK QR", fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showTelegramQuickDrawer = false }) {
+                    Text("Close")
+                }
+            },
+            modifier = Modifier.testTag("telegram_quick_customization_drawer")
+        )
+    }
+
     if (showQuickQrShareDialog) {
         AlertDialog(
             onDismissRequest = { showQuickQrShareDialog = false },
-            title = { Text("Share App & Permanent Website QR") },
+            title = { Text("Share Website & Android App") },
             text = {
                 PermanentQrAndShareCard(
                     appleWebAppUrl = appleWebAppUrl,

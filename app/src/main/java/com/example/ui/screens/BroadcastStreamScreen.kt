@@ -31,21 +31,33 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -161,13 +173,22 @@ fun BroadcastStreamScreen(
     onNavigateToReviews: () -> Unit = {},
     onReplyToMessageRequest: (BroadcastMessage) -> Unit = {},
     onEditMessageRequest: (BroadcastMessage) -> Unit,
-    onDeleteMessageRequest: (String) -> Unit
+    onDeleteMessageRequest: (String) -> Unit,
+    onQuickPublishBroadcast: (
+        title: String,
+        content: String,
+        targetTier: String,
+        signalType: String,
+        markedPhotoBase64: String
+    ) -> Unit = { _, _, _, _, _ -> }
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val isEntitled = isAdmin || (userProfile?.isEntitledNow() == true)
     var swipeGalleryItems by remember { mutableStateOf<List<SwipeableGalleryItem>>(emptyList()) }
     var swipeInitialIndex by remember { mutableStateOf(0) }
     var inspectSeenByMessage by remember { mutableStateOf<BroadcastMessage?>(null) }
     var previewQuotedMessage by remember { mutableStateOf<BroadcastMessage?>(null) }
+    var showQuickComposeDialog by remember { mutableStateOf(false) }
 
     val eligibleChartGallery = remember(messages, userProfile, isAdmin) {
         messages.filter {
@@ -506,8 +527,223 @@ fun BroadcastStreamScreen(
                     }
                 }
             }
+
+            // WhatsApp-style Floating Pencil Compose Button directly inside the Messages Tab for Admin
+            if (isAdmin) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        SoundAndHapticFeedback.playClick(context)
+                        showQuickComposeDialog = true
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Write Broadcast Message"
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "Write Message",
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    },
+                    containerColor = Color(0xFF10B981),
+                    contentColor = Color.Black,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(20.dp)
+                        .testTag("whatsapp_pencil_compose_fab")
+                )
+            }
         }
     }
+
+    if (showQuickComposeDialog && isAdmin) {
+        QuickBroadcastComposeDialog(
+            pricingConfig = pricingConfig,
+            onDismiss = { showQuickComposeDialog = false },
+            onPublish = { title, content, tier, sig, photo ->
+                onQuickPublishBroadcast(title, content, tier, sig, photo)
+                showQuickComposeDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun QuickBroadcastComposeDialog(
+    pricingConfig: PricingConfig,
+    onDismiss: () -> Unit,
+    onPublish: (title: String, content: String, targetTier: String, signalType: String, markedPhotoBase64: String) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var title by remember { mutableStateOf("") }
+    var content by remember { mutableStateOf("") }
+    var selectedTier by remember { mutableStateOf("ALL") }
+    var selectedSignal by remember { mutableStateOf("AUTO") }
+    var photoBase64 by remember { mutableStateOf("") }
+
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val encoded = ImageCodecHelper.encodeUriToBase64Jpeg(
+                context = context,
+                uri = uri,
+                maxDimension = 900,
+                quality = 75
+            )
+            if (encoded != null) {
+                photoBase64 = encoded
+            }
+        }
+    }
+
+    val tierOptions = remember(pricingConfig) {
+        val dynamicPlans = pricingConfig.availablePlans().map { it.name to "🎯 ${it.name}" }
+        listOf(
+            "ALL" to "🌐 Same to All Members",
+            "PAID_ONLY" to "💎 Paid Members Only"
+        ) + dynamicPlans
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF10B981))
+                Text("Quick Broadcast Message", fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Headline (e.g. BUY MCX GOLD 76500)") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("quick_compose_title_input")
+                )
+
+                OutlinedTextField(
+                    value = content,
+                    onValueChange = { content = it },
+                    label = { Text("Trade Levels, Stop Loss & Targets") },
+                    minLines = 3,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("quick_compose_content_input")
+                )
+
+                Text(
+                    text = "Target Membership Audience",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF10B981)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    tierOptions.forEach { (tierKey, tierLabel) ->
+                        FilterChip(
+                            selected = selectedTier == tierKey,
+                            onClick = {
+                                SoundAndHapticFeedback.playTap(context)
+                                selectedTier = tierKey
+                            },
+                            label = { Text(tierLabel, maxLines = 1, softWrap = false) }
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Signal Haptic Vibration",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        "AUTO" to "⚡ Auto",
+                        "BUY" to "🟢 BUY",
+                        "SELL" to "🔴 SELL",
+                        "TARGET HIT" to "🎯 TARGET HIT"
+                    ).forEach { (sigKey, sigLabel) ->
+                        FilterChip(
+                            selected = selectedSignal == sigKey,
+                            onClick = {
+                                SoundAndHapticFeedback.playTap(context)
+                                selectedSignal = sigKey
+                            },
+                            label = { Text(sigLabel, maxLines = 1, softWrap = false) }
+                        )
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        imagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (photoBase64.isBlank()) "Attach Chart Photo (Optional)" else "✅ Chart Photo Attached (Tap to Change)")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (title.isBlank() || content.isBlank()) return@Button
+                    val resolvedSig = if (selectedSignal == "AUTO") {
+                        SoundAndHapticFeedback.detectSignalType(title, content)
+                    } else {
+                        selectedSignal
+                    }
+                    if (resolvedSig.isNotBlank()) {
+                        SoundAndHapticFeedback.playTradeSignal(context, resolvedSig)
+                    } else {
+                        SoundAndHapticFeedback.playSuccess(context)
+                    }
+                    onPublish(title.trim(), content.trim(), selectedTier, selectedSignal, photoBase64)
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF10B981),
+                    contentColor = Color.Black
+                ),
+                modifier = Modifier.testTag("quick_compose_send_button")
+            ) {
+                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Send Now", fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

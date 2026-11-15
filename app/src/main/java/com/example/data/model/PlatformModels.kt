@@ -157,12 +157,35 @@ data class UserProfile(
         return (devToken ?: defaultLimit).coerceIn(1, 10)
     }
 
+    fun banExpiresAtMillis(): Long {
+        val tokens = securityQuestion.split("|")
+        val banToken = tokens.firstOrNull { it.startsWith("__BAN_UNTIL__:") }
+            ?.removePrefix("__BAN_UNTIL__:")?.trim()
+        val millisPart = banToken?.substringBefore(":")?.trim()?.toLongOrNull() ?: 0L
+        return millisPart.coerceAtLeast(0L)
+    }
+
+    fun banDurationLabel(): String {
+        val tokens = securityQuestion.split("|")
+        val banToken = tokens.firstOrNull { it.startsWith("__BAN_UNTIL__:") }
+            ?.removePrefix("__BAN_UNTIL__:")?.trim()
+        if (banToken.isNullOrBlank()) return "Permanent"
+        val label = banToken.substringAfter(":", "Permanent").trim()
+        return label.ifBlank { "Permanent" }
+    }
+
+    fun isTimedBanExpired(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        val until = banExpiresAtMillis()
+        return accountStatus == "BANNED" && until > 0L && nowMillis >= until
+    }
+
     fun displaySecurityQuestion(): String {
         val tokens = securityQuestion.split("|")
         val nonMeta = tokens.filterNot {
             it.startsWith("__PASS__:") ||
                 it.startsWith("__2FA__:") ||
-                it.startsWith("__MAXDEV__:")
+                it.startsWith("__MAXDEV__:") ||
+                it.startsWith("__BAN_UNTIL__:")
         }
         val joined = nonMeta.joinToString(" ").trim()
         return joined.ifBlank { "What is your favorite trading instrument?" }
@@ -173,21 +196,30 @@ data class UserProfile(
             password: String,
             twoStepEnabled: Boolean,
             maxDevicesLimit: Int,
-            plainQuestion: String
+            plainQuestion: String,
+            banUntilMillis: Long = 0L,
+            banDurationLabel: String = ""
         ): String {
             val cleanPass = password.replace("|", "").trim().take(60)
             val cleanQ = plainQuestion.split("|")
                 .filterNot {
                     it.startsWith("__PASS__:") ||
                         it.startsWith("__2FA__:") ||
-                        it.startsWith("__MAXDEV__:")
+                        it.startsWith("__MAXDEV__:") ||
+                        it.startsWith("__BAN_UNTIL__:")
                 }
                 .joinToString(" ")
                 .trim()
                 .ifBlank { "What is your favorite trading instrument?" }
-                .take(160)
+                .take(130)
             val clampedMax = maxDevicesLimit.coerceIn(1, 10)
-            return "__PASS__:$cleanPass|__2FA__:$twoStepEnabled|__MAXDEV__:$clampedMax|$cleanQ".take(295)
+            val banSegment = if (banUntilMillis > 0L || banDurationLabel.isNotBlank()) {
+                val cleanLabel = banDurationLabel.replace("|", "").replace(":", " ").trim().ifBlank { "Permanent" }.take(28)
+                "|__BAN_UNTIL__:$banUntilMillis:$cleanLabel"
+            } else {
+                ""
+            }
+            return "__PASS__:$cleanPass|__2FA__:$twoStepEnabled|__MAXDEV__:$clampedMax$banSegment|$cleanQ".take(295)
         }
     }
 }

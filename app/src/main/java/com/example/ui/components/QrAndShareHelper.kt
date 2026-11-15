@@ -527,17 +527,11 @@ fun PermanentQrAndShareCard(
     }
     val githubPagesUrl = "https://atharvagarg456-droid.github.io/Trading-Zone.in/"
 
-    val activeUrl = when (selectedQrTab) {
-        0 -> zero404AppleUrl
-        1 -> githubPagesUrl
-        2 -> androidApkUrl
-        else -> localServerUrl
-    }
-    val activeTitle = when (selectedQrTab) {
-        0 -> "Apple iPhone / Safari Instant Cloud QR (Zero-404)"
-        1 -> "Google Chrome & Safari Website QR (Trading-Zone.in)"
-        2 -> "Android Direct APK Download QR"
-        else -> "Local Wi-Fi / Hotspot Website QR (Chrome & Safari)"
+    val activeUrl = if (selectedQrTab == 1) androidApkUrl else zero404AppleUrl
+    val activeTitle = if (selectedQrTab == 1) {
+        "Android App (APK) Download QR"
+    } else {
+        "Official Website QR (Google Chrome & Apple Safari)"
     }
 
     val qrBitmap = remember(activeUrl) {
@@ -571,12 +565,12 @@ fun PermanentQrAndShareCard(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "Google Chrome & Apple Safari Website Hub",
+                            text = "Share Website & Android App",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Runs as a standard website on Google Chrome & Apple Safari (Cloud + Local Server)",
+                            text = "2 simple options: Website (Chrome & Safari) or Android App",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -597,11 +591,9 @@ fun PermanentQrAndShareCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            @OptIn(ExperimentalLayoutApi::class)
-            FlowRow(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterChip(
                     selected = selectedQrTab == 0,
@@ -609,7 +601,14 @@ fun PermanentQrAndShareCard(
                         SoundAndHapticFeedback.playTap(context)
                         selectedQrTab = 0
                     },
-                    label = { Text("🍎 Safari / Chrome Cloud") }
+                    label = {
+                        Text(
+                            text = "🌐 Website (Chrome & Safari)",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    modifier = Modifier.weight(1f)
                 )
                 FilterChip(
                     selected = selectedQrTab == 1,
@@ -617,25 +616,14 @@ fun PermanentQrAndShareCard(
                         SoundAndHapticFeedback.playTap(context)
                         selectedQrTab = 1
                     },
-                    label = { Text("🌐 GitHub Website") }
-                )
-                FilterChip(
-                    selected = selectedQrTab == 3,
-                    onClick = {
-                        SoundAndHapticFeedback.playTap(context)
-                        localServerUrl = LocalWebAppServer.startServer(context)
-                        localServerEnabled = true
-                        selectedQrTab = 3
+                    label = {
+                        Text(
+                            text = "🤖 Android App (APK)",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     },
-                    label = { Text("📡 Wi-Fi / Hotspot Web") }
-                )
-                FilterChip(
-                    selected = selectedQrTab == 2,
-                    onClick = {
-                        SoundAndHapticFeedback.playTap(context)
-                        selectedQrTab = 2
-                    },
-                    label = { Text("🤖 Android APK") }
+                    modifier = Modifier.weight(1f)
                 )
             }
 
@@ -647,7 +635,7 @@ fun PermanentQrAndShareCard(
                 color = Color.White,
                 shadowElevation = 6.dp,
                 modifier = Modifier
-                    .size(220.dp)
+                    .size(200.dp)
                     .clickable {
                         com.example.util.SoundAndHapticFeedback.playTap(context)
                         showFullScreenQr = true
@@ -677,55 +665,13 @@ fun PermanentQrAndShareCard(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
-            Text(
-                text = activeUrl,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.clickable {
-                    showInAppWebPortal = true
-                }
-            )
-            TextButton(onClick = { showFullScreenQr = true }) {
-                Icon(Icons.Default.Fullscreen, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Tap to Enlarge Permanent QR Code")
-            }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Primary Action: Open Normal Website in Google Chrome / Apple Safari (HTTP Server)
+            // Option 1: Open / Share Website (Chrome & Apple Safari)
             Button(
                 onClick = {
                     SoundAndHapticFeedback.playSuccess(context)
-                    LocalWebAppServer.startServer(context)
-                    LocalWebAppServer.openInChromeOrBrowser(context, LocalWebAppServer.getLoopbackUrl())
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF0284C7),
-                    contentColor = Color.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("open_chrome_safari_website_button")
-            ) {
-                Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "🌐 Open Normal Website in Google Chrome / Safari",
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Secondary Action: Open Live Apple / Web App Inside App Portal
-            Button(
-                onClick = {
-                    SoundAndHapticFeedback.playClick(context)
                     LocalWebAppServer.startServer(context)
                     showInAppWebPortal = true
                 },
@@ -738,34 +684,10 @@ fun PermanentQrAndShareCard(
                     .height(48.dp)
                     .testTag("open_permanent_webapp_button")
             ) {
-                Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Open Live Website Inside App Portal", fontWeight = FontWeight.ExtraBold)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Send Standalone Apple Web App HTML File Directly via WhatsApp/Telegram/AirDrop
-            Button(
-                onClick = {
-                    AppShareHelper.shareStandaloneAppleWebAppFile(
-                        context = context,
-                        webUrl = appleWebAppUrl
-                    )
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFF59E0B),
-                    contentColor = Color.Black
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("share_standalone_apple_file_button")
-            ) {
-                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Send Direct Website File (Chrome & Apple Safari)",
+                    text = "🌐 Open Live Website (Chrome & Safari)",
                     fontWeight = FontWeight.ExtraBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -774,46 +696,27 @@ fun PermanentQrAndShareCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Share Buttons for Apple iPhone Website & Android APK
-            Button(
-                onClick = {
-                    AppShareHelper.shareAppleWebAppLink(
-                        context = context,
-                        webUrl = appleWebAppUrl,
-                        apkUrl = androidApkUrl
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("share_apple_webapp_button")
-            ) {
-                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Share Apple iPhone Website & App Link", fontWeight = FontWeight.Bold)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
+            // Option 2: Share Website & Android APK Link
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
+                Button(
                     onClick = {
-                        AppShareHelper.copyToClipboard(
+                        AppShareHelper.shareAppleWebAppLink(
                             context = context,
-                            label = "Website Link",
-                            text = appleWebAppUrl
+                            webUrl = appleWebAppUrl,
+                            apkUrl = androidApkUrl
                         )
                     },
                     modifier = Modifier
                         .weight(1f)
-                        .testTag("copy_apple_webapp_link_button")
+                        .height(46.dp)
+                        .testTag("share_apple_webapp_button")
                 ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Copy Link")
+                    Text("Share Website", fontWeight = FontWeight.Bold, maxLines = 1)
                 }
 
                 OutlinedButton(
@@ -826,35 +729,12 @@ fun PermanentQrAndShareCard(
                     },
                     modifier = Modifier
                         .weight(1f)
+                        .height(46.dp)
                         .testTag("share_android_apk_button")
                 ) {
                     Icon(Icons.Default.Android, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Share APK Link")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Step-by-step instructions on how the permanent QR & GitHub Pages works
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "How to Open on Any Device & Enable GitHub Pages (Trading-Zone.in):",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF10B981)
-                    )
-                    Text(
-                        text = "• Tap 'Open Live Apple / Web App Now' above to launch the embedded Apple Web App immediately inside the app.\n" +
-                            "• For external iPhones scanning the QR URL ($appleWebAppUrl): On your public GitHub repo (Trading-Zone.in), go once to Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: gh-pages (or main /docs) → Save.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Share APK", fontWeight = FontWeight.Bold, maxLines = 1)
                 }
             }
         }

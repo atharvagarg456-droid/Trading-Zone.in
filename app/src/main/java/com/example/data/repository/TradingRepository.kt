@@ -1786,21 +1786,35 @@ class TradingRepository(private val db: FirebaseFirestore) {
     suspend fun setDeviceBanStatus(
         user: UserProfile,
         ban: Boolean,
-        allUserDevices: List<DeviceRecord> = emptyList()
+        allUserDevices: List<DeviceRecord> = emptyList(),
+        banDurationMillis: Long = 0L,
+        banDurationLabel: String = "Permanent"
     ): Result<Unit> = runCatching {
         requireUserId()
         val userRef = db.collection("users").document(user.userId)
         try {
+            val now = System.currentTimeMillis()
+            val banUntilMillis = if (ban && banDurationMillis > 0L) now + banDurationMillis else 0L
+            val effectiveLabel = if (ban) banDurationLabel.ifBlank { "Permanent" } else ""
+            val encodedSecMeta = UserProfile.encodeSecurityMetadata(
+                password = user.extractAppPassword(),
+                twoStepEnabled = user.isTwoStepEnabled(),
+                maxDevicesLimit = user.maxDevicesLimit(),
+                plainQuestion = user.displaySecurityQuestion(),
+                banUntilMillis = banUntilMillis,
+                banDurationLabel = effectiveLabel
+            )
             val updates = mutableMapOf<String, Any>(
                 "accountStatus" to if (ban) "BANNED" else "APPROVED",
+                "securityQuestion" to encodedSecMeta,
                 "updatedAt" to FieldValue.serverTimestamp()
             )
             if (!ban) {
                 updates["isCommodityMuted"] = false
-                if (user.validUntilMillis <= System.currentTimeMillis()) {
+                if (user.validUntilMillis <= now) {
                     updates["entitlementStatus"] = "TRIAL_ACTIVE"
                     updates["activePlanName"] = user.activePlanName.ifBlank { "Second Chance Access (7d)" }
-                    updates["validUntilMillis"] = System.currentTimeMillis() + 7L * 86_400_000L
+                    updates["validUntilMillis"] = now + 7L * 86_400_000L
                 }
             }
             userRef.update(updates).await()
@@ -1824,6 +1838,54 @@ class TradingRepository(private val db: FirebaseFirestore) {
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.UPDATE, userRef.path)
             throw e
+        }
+    }
+
+    suspend fun recordScreenshotAttemptAlertAndAutoBan(
+        profile: UserProfile?,
+        userEmail: String,
+        deviceId: String,
+        ipAddress: String,
+        strikeCount: Int,
+        adminEmails: List<String>
+    ): Result<Unit> = runCatching {
+        val uid = requireUserId()
+        val alertRef = db.collection("moderation_alerts").document()
+        val isAutoBan = strikeCount >= 2
+        try {
+            alertRef.set(
+                mapOf(
+                    "userId" to uid,
+                    "userEmail" to (profile?.email?.ifBlank { userEmail } ?: userEmail).take(200),
+                    "userName" to (profile?.fullName?.ifBlank { userEmail } ?: userEmail).take(120),
+                    "userPhotoBase64" to (profile?.photoBase64 ?: "").take(450000),
+                    "deviceId" to deviceId.ifBlank { profile?.deviceId ?: "UNKNOWN_DEV" }.take(128),
+                    "ipAddress" to ipAddress.ifBlank { profile?.ipAddress ?: "0.0.0.0" }.take(100),
+                    "tradeMessageTitle" to "Screenshot Policy Violation (Strike $strikeCount/2)".take(200),
+                    "originalUneditedText" to if (isAutoBan) {
+                        "2nd Screenshot Attempt Detected — Automatic 24-Hour Account & Device Block Enforced"
+                    } else {
+                        "1st Screenshot Attempt Detected — Warning Issued to Member"
+                    },
+                    "blurredText" to "[SCREENSHOT BLOCKED BY SECURITY ENGINE]",
+                    "detectedWords" to if (isAutoBan) "SCREENSHOT_AUTO_BAN_24H" else "SCREENSHOT_ATTEMPT_STRIKE_1",
+                    "status" to if (isAutoBan) "BANNED" else "OPEN",
+                    "adminEmails" to adminEmails,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        } catch (_: Exception) {
+        }
+
+        if (isAutoBan && profile != null) {
+            setDeviceBanStatus(
+                user = profile,
+                ban = true,
+                allUserDevices = emptyList(),
+                banDurationMillis = 86_400_000L,
+                banDurationLabel = "24 Hours (Screenshot Policy)"
+            )
         }
     }
 

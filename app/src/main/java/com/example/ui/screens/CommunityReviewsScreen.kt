@@ -122,8 +122,10 @@ fun CommunityReviewsScreen(
     onToggleReaction: (targetId: String, emoji: String) -> Unit = { _, _ -> },
     onUpdateTodayProfitBannerAndCard: (TodayProfitBanner, Boolean) -> Unit = { _, _ -> },
     onClearUnpinnedCommodityMessages: () -> Unit = {},
+    onApplyDailyMessageLimit: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var opinionText by rememberSaveable { mutableStateOf("") }
     var selectedMessageIndex by rememberSaveable { mutableStateOf(0) }
     var selectedTopicFilter by rememberSaveable { mutableStateOf("All") }
@@ -131,6 +133,9 @@ fun CommunityReviewsScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var showComposer by rememberSaveable { mutableStateOf(false) }
     var showOwnerPnlDialog by remember { mutableStateOf(false) }
+    var inlineLimitSelection by remember(pricingConfig.dailyReviewLimitPerUser) {
+        mutableStateOf(pricingConfig.dailyReviewLimitPerUser.toInt().coerceAtLeast(1))
+    }
 
     val dailyLimit = pricingConfig.dailyReviewLimitPerUser.toInt().coerceAtLeast(1)
     val usedToday = profile?.usedReviewsToday() ?: 0
@@ -286,7 +291,8 @@ fun CommunityReviewsScreen(
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f)
                                     ) {
                                         Icon(
                                             imageVector = if (pricingConfig.commodityChatLocked) Icons.Default.Lock else Icons.Default.LockOpen,
@@ -313,6 +319,60 @@ fun CommunityReviewsScreen(
                                         onCheckedChange = onToggleCommodityChatLock,
                                         modifier = Modifier.testTag("admin_commodity_lock_switch")
                                     )
+                                }
+
+                                // Inline Daily Message Limit Selector + Apply right inside Commodity Tab
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Daily Msg Limit:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    listOf(1, 2, 3, 5, 10).forEach { limitOpt ->
+                                        FilterChip(
+                                            selected = inlineLimitSelection == limitOpt,
+                                            onClick = {
+                                                com.example.util.SoundAndHapticFeedback.playTap(context)
+                                                inlineLimitSelection = limitOpt
+                                                onApplyDailyMessageLimit(limitOpt.toLong())
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = "${limitOpt}/day",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        )
+                                    }
+                                    Button(
+                                        onClick = {
+                                            com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                            onApplyDailyMessageLimit(inlineLimitSelection.toLong())
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        modifier = Modifier
+                                            .height(34.dp)
+                                            .testTag("commodity_inline_apply_limit_button")
+                                    ) {
+                                        Text(
+                                            text = "Apply (${inlineLimitSelection})",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
 
                                 Row(

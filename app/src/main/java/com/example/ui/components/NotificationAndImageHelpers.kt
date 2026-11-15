@@ -245,6 +245,32 @@ object NotificationHelper {
         }
     }
 
+    fun showAdminApprovalNotification(
+        context: Context,
+        title: String,
+        body: String,
+        notificationId: Int = 3030
+    ) {
+        ensureChannels(context)
+        if (!canPostNotifications(context)) return
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_BROADCAST)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setContentIntent(createLaunchPendingIntent(context, notificationId))
+            .setAutoCancel(true)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
+        } catch (_: SecurityException) {
+        }
+    }
+
     fun buildBackgroundSyncNotification(context: Context, isConnected: Boolean = true): Notification {
         ensureChannels(context)
         val statusText = if (isConnected) {
