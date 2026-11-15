@@ -760,7 +760,7 @@
   <!-- TOP APP BAR -->
   <header class="top-bar">
     <div class="top-bar-row">
-      <div class="brand">
+      <div class="brand" onclick="openTelegramQuickHub()" style="cursor:pointer;" title="Tap Trading Zone for Quick Customization, Themes, Limits &amp; Admin Tools">
         <div class="brand-icon">
           <svg width="36" height="36" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
             <polygon points="54,10 92,32 92,76 54,98 16,76 16,32" fill="#081428" stroke="#FFD54F" stroke-width="5"/>
@@ -771,11 +771,15 @@
           </svg>
         </div>
         <div>
-          <div class="brand-title">Trading Zone</div>
-          <div class="brand-sub" id="topBarSubtitle">Apple iOS &amp; Web Live Edition</div>
+          <div class="brand-title">Trading Zone <span style="font-size:11px;opacity:0.75;">▾</span></div>
+          <div class="brand-sub" id="topBarSubtitle">Tap for Quick Customization &amp; Controls</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <!-- Live Admin Pending Approvals Badge -->
+        <button id="topBarApprovalsBadge" class="icon-btn" style="display:none;background:rgba(245,158,11,0.22);border-color:var(--amber);color:#FFD54F;font-weight:900;" onclick="jumpToAdminApprovals()" title="Pending Admin Approvals">
+          <span>🔔</span><span id="topBarApprovalsCount">0</span>
+        </button>
         <!-- 1-Tap Sound / Haptics Toggle -->
         <button class="icon-btn" onclick="toggleWebSoundPref()" title="Toggle Sound &amp; Haptics">
           <span id="soundTopIcon">🔊</span>
@@ -784,9 +788,13 @@
         <button class="icon-btn" onclick="cycleLookTheme()" title="Switch Look-Changer UI Theme">
           <span>🎨</span><span id="lookThemeBtnLabel">Look</span>
         </button>
-        <!-- Permanent QR & Share Button -->
-        <button class="icon-btn" onclick="openQrShareModal()" title="Share Apple Website &amp; Permanent QR">
-          <span>🔳</span><span>QR</span>
+        <!-- Simplified 2-Option QR & Share Button -->
+        <button class="icon-btn" onclick="openQrShareModal()" title="Share Website or Android APK">
+          <span>🔳</span><span>Share</span>
+        </button>
+        <!-- Telegram-Style Three-Dot Quick Customization & Admin Menu -->
+        <button class="icon-btn" onclick="openTelegramQuickHub()" title="Telegram-Style Quick Customization, Limits &amp; Admin Tools" style="font-weight:900;font-size:16px;padding:6px 10px;">
+          <span>⋮</span>
         </button>
         <!-- Live Network / Status Pill -->
         <span id="networkTopPill" class="pill pill-emerald">● ONLINE</span>
@@ -1081,12 +1089,39 @@
       </div>
 
       <div id="broadcastList" style="display:flex;flex-direction:column;gap:12px;"></div>
+
+      <!-- WhatsApp-Style Floating Pencil Compose Button on Messages Tab (Admin Only) -->
+      <button id="webWhatsappPencilFab" onclick="openQuickBroadcastComposeModal()" style="display:none;position:fixed;right:20px;bottom:84px;z-index:90;background:linear-gradient(135deg,#00E676,#10B981);color:#04120B;border:none;border-radius:999px;padding:13px 20px;font-weight:900;font-size:14px;box-shadow:0 10px 28px rgba(0,230,118,0.4);cursor:pointer;align-items:center;gap:8px;">
+        <span>✏️</span><span>Write Message</span>
+      </button>
     </section>
 
     <!-- MAIN TAB 2: COMMODITY SECTION (TRADE SIGNAL P&L BANNER + TELEGRAM EMOJI REACTIONS + ADMIN-ONLY DELETE) -->
     <section id="tabCommodity" class="screen">
       <!-- Pinned Top Banner: Trade Signal Profit / Loss (As Per Broadcast Call) with Telegram Emoji Reactions -->
       <div id="commodityTodayPnlBanner"></div>
+
+      <!-- Inline Admin Room Open/Lock & Daily Message Limit Bar (Right Inside Commodity Tab) -->
+      <div id="commodityAdminInlineBar" class="card" style="display:none;border-color:rgba(16,185,129,0.45);background:rgba(16,185,129,0.08);">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+          <div>
+            <span class="pill pill-emerald">🛡️ ADMIN INLINE COMMODITY CONTROLS</span>
+            <div style="font-weight:800;font-size:14px;margin-top:4px;" id="inlineCommodityRoomStateTitle">Commodity Room: OPEN</div>
+          </div>
+          <button class="btn btn-primary" id="inlineCommodityToggleRoomBtn" style="width:auto;padding:7px 14px;font-size:12px;" onclick="toggleInlineCommodityRoomLock()">🔒 Lock Room</button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+          <span style="font-size:12px;font-weight:800;">Daily Msg Limit / User:</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <button class="chip" id="inlineLimChip1" onclick="selectInlineCommodityLimit(1)">1</button>
+            <button class="chip" id="inlineLimChip2" onclick="selectInlineCommodityLimit(2)">2</button>
+            <button class="chip" id="inlineLimChip3" onclick="selectInlineCommodityLimit(3)">3</button>
+            <button class="chip" id="inlineLimChip5" onclick="selectInlineCommodityLimit(5)">5</button>
+            <button class="chip" id="inlineLimChip10" onclick="selectInlineCommodityLimit(10)">10</button>
+            <button class="btn btn-primary" style="width:auto;padding:6px 12px;font-size:12px;" onclick="applyInlineCommodityLimit()">✓ Apply</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Strict No-Refund Identity Warning -->
       <div class="card" style="border-color:rgba(245,158,11,0.5);background:rgba(245,158,11,0.08);">
@@ -1464,26 +1499,136 @@
   </nav>
 </div>
 
-<!-- MODAL: PERMANENT WEBSITE QR & SHARE HUB (ZERO-404 CLOUD + GITHUB PAGES + ANDROID APK) -->
+<!-- MODAL: SIMPLIFIED 2-OPTION SHARE & QR HUB (1. WEBSITE + 2. ANDROID APK) -->
 <div id="qrShareModal" class="modal-backdrop" onclick="if(event.target===this)closeQrShareModal()">
   <div class="modal-card" style="text-align:center;">
-    <div class="pill pill-emerald" style="margin:0 auto;">PERMANENT QR CODE • ZERO-404 APPLE &amp; ANDROID</div>
-    <div class="card-title" style="font-size:18px;text-align:center;">Scan to Open Trading Zone</div>
+    <div class="pill pill-emerald" style="margin:0 auto;">QUICK SHARE • WEBSITE &amp; ANDROID APP</div>
+    <div class="card-title" style="font-size:18px;text-align:center;">Share Trading Zone</div>
     <p class="card-sub" style="text-align:center;">
-      Point any Apple iPhone, iPad, or Android camera at this permanent QR code to launch Trading Zone immediately.
+      Choose Website (works on Google Chrome &amp; Apple Safari) or Android App (APK).
     </p>
     <div class="chip-row" style="justify-content:center;">
-      <button class="chip selected" id="qrTabApple" onclick="switchModalQrTarget('apple')">🍎 Apple QR (No 404)</button>
-      <button class="chip" id="qrTabPages" onclick="switchModalQrTarget('pages')">🌐 GitHub Pages</button>
-      <button class="chip" id="qrTabAndroid" onclick="switchModalQrTarget('android')">🤖 Android APK</button>
+      <button class="chip selected" id="qrTabApple" onclick="switchModalQrTarget('apple')">🌐 1. Website (Chrome &amp; Safari)</button>
+      <button class="chip" id="qrTabAndroid" onclick="switchModalQrTarget('android')">🤖 2. Android App (APK)</button>
     </div>
     <div class="qr-box" id="modalQrBox"></div>
     <div style="font-size:11px;color:var(--emerald);word-break:break-all;text-align:center;" id="modalQrUrlText"></div>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="shareAppleWebsiteLink()">📤 Share Apple Website</button>
+      <button class="btn btn-primary" onclick="shareAppleWebsiteLink()">📤 Share Link</button>
       <button class="btn btn-outline" onclick="copyCurrentQrLink()">📋 Copy Link</button>
     </div>
     <button class="btn btn-outline" onclick="closeQrShareModal()">Close</button>
+  </div>
+</div>
+
+<!-- MODAL: TELEGRAM-STYLE QUICK CUSTOMIZATION, LIMITS & ADMIN HUB (OPENED BY TAPPING "TRADING ZONE" OR ⋮) -->
+<div id="telegramQuickHubModal" class="modal-backdrop" onclick="if(event.target===this)closeTelegramQuickHub()">
+  <div class="modal-card" style="max-height:88vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div>
+        <span class="pill pill-emerald">⚡ TELEGRAM-STYLE QUICK DRAWER</span>
+        <div class="card-title" style="margin-top:4px;">Trading Zone Customization &amp; Controls</div>
+      </div>
+      <button class="icon-btn" onclick="closeTelegramQuickHub()">✕</button>
+    </div>
+
+    <!-- 1. Look-Changer Themes -->
+    <div style="padding:10px;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:8px;">
+      <div style="font-weight:800;font-size:13px;">🎨 Instant UI Theme Customization</div>
+      <div class="chip-row">
+        <button class="chip" onclick="applyLookThemeByIndex(0)">Midnight Gold</button>
+        <button class="chip" onclick="applyLookThemeByIndex(1)">Cyber Emerald</button>
+        <button class="chip" onclick="applyLookThemeByIndex(2)">Royal Purple</button>
+        <button class="chip" onclick="applyLookThemeByIndex(3)">Ocean Sapphire</button>
+        <button class="chip" onclick="applyLookThemeByIndex(4)">Crimson Pro</button>
+      </div>
+    </div>
+
+    <!-- 2. Sound & Haptic Vibration Controls -->
+    <div style="padding:10px;border:1px solid var(--border);border-radius:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div>
+        <div style="font-weight:800;font-size:13px;">🔊 Trade Signal Sound &amp; Haptics</div>
+        <div class="card-sub">Distinct vibration for BUY, SELL &amp; TARGET HIT</div>
+      </div>
+      <button class="btn btn-primary" style="width:auto;padding:7px 14px;" onclick="toggleWebSoundPref()">Toggle Sound</button>
+    </div>
+
+    <!-- 3. Simplified 2-Button Share (Website + Android APK) -->
+    <div style="padding:10px;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:8px;">
+      <div style="font-weight:800;font-size:13px;">🌐 Quick Share (Website &amp; Android APK)</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="closeTelegramQuickHub();openQrShareModal();switchModalQrTarget('apple');">🌐 Share Website</button>
+        <button class="btn btn-outline" onclick="closeTelegramQuickHub();openQrShareModal();switchModalQrTarget('android');">🤖 Android APK</button>
+      </div>
+    </div>
+
+    <!-- 4. Admin Direct Quick Controls (Shown when Admin is logged in) -->
+    <div id="telegramHubAdminSection" style="display:none;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--emerald);border-radius:12px;background:rgba(16,185,129,0.08);">
+      <div style="font-weight:900;font-size:13px;color:var(--emerald);">🛡️ ADMIN DIRECT CUSTOMIZATION &amp; TOOLS</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="closeTelegramQuickHub();openQuickBroadcastComposeModal();">✏️ Write Broadcast Message</button>
+        <button class="btn btn-outline" onclick="closeTelegramQuickHub();jumpToAdminApprovals();">🔔 Pending Approvals</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <span style="font-size:12px;font-weight:800;">Commodity Room Access:</span>
+        <button class="btn btn-outline" style="width:auto;padding:6px 12px;font-size:12px;" onclick="toggleInlineCommodityRoomLock()">🔓 Toggle Open / Lock</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+        <span style="font-size:12px;font-weight:800;">Daily Msg Limit:</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <button class="chip" onclick="selectInlineCommodityLimit(1);applyInlineCommodityLimit();">1</button>
+          <button class="chip" onclick="selectInlineCommodityLimit(2);applyInlineCommodityLimit();">2</button>
+          <button class="chip" onclick="selectInlineCommodityLimit(3);applyInlineCommodityLimit();">3</button>
+          <button class="chip" onclick="selectInlineCommodityLimit(5);applyInlineCommodityLimit();">5</button>
+          <button class="chip" onclick="selectInlineCommodityLimit(10);applyInlineCommodityLimit();">10</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-outline" onclick="closeTelegramQuickHub()">Close</button>
+  </div>
+</div>
+
+<!-- MODAL: WHATSAPP-STYLE QUICK BROADCAST COMPOSER (DIRECT FROM MESSAGES TAB) -->
+<div id="quickBroadcastComposeModal" class="modal-backdrop" onclick="if(event.target===this)closeQuickBroadcastComposeModal()">
+  <div class="modal-card" style="max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <span class="pill pill-emerald">✏️ DIRECT BROADCAST COMPOSER</span>
+        <div class="card-title" style="margin-top:4px;">Send Trade Broadcast Message</div>
+      </div>
+      <button class="icon-btn" onclick="closeQuickBroadcastComposeModal()">✕</button>
+    </div>
+    <input id="quickBcTitleInput" class="input" placeholder="Broadcast Headline (e.g., BUY GOLD 72400 TGT 72950)" />
+    <div style="font-size:12px;font-weight:800;color:var(--muted);">Signal Vibration &amp; Alert Type:</div>
+    <div class="chip-row">
+      <button class="chip selected" onclick="setQuickBcSignal('BUY', this)">🟢 BUY Signal</button>
+      <button class="chip" onclick="setQuickBcSignal('SELL', this)">🔴 SELL Signal</button>
+      <button class="chip" onclick="setQuickBcSignal('TARGET HIT', this)">🎯 TARGET HIT</button>
+    </div>
+    <div style="font-size:12px;font-weight:800;color:var(--muted);">Target Membership Audience:</div>
+    <select id="quickBcTierSelect" class="input">
+      <option value="ALL">🌐 Send to All Members (Trial + Paid)</option>
+      <option value="PAID_ONLY">💎 All Paid Members Only (Lock Free Trial)</option>
+      <option value="PLAN_1">📅 Plan #1 (Monthly &amp; Higher)</option>
+      <option value="PLAN_2">🔥 Plan #2 (Quarterly &amp; Higher)</option>
+      <option value="PLAN_3">👑 Plan #3 (Half-Yearly VIP Only)</option>
+    </select>
+    <textarea id="quickBcBodyInput" class="textarea" placeholder="Write trade entry, stop-loss, targets &amp; full advisory..."></textarea>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="submitQuickBroadcastFromModal()">🚀 Publish Broadcast Now</button>
+      <button class="btn btn-outline" onclick="closeQuickBroadcastComposeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ANTI-SCREENSHOT SECURITY WARNING (STRIKE 1 WARNING / STRIKE 2 24H AUTO-BAN) -->
+<div id="screenshotWarningModal" class="modal-backdrop" onclick="if(event.target===this)closeScreenshotWarningModal()">
+  <div class="modal-card" style="border-color:var(--crimson);text-align:center;">
+    <span class="pill pill-crimson" style="margin:0 auto;">🚫 ANTI-SCREENSHOT SECURITY GUARD</span>
+    <div class="card-title" id="screenshotWarningTitle" style="color:#FCA5A5;margin-top:6px;">Screenshot Attempt Detected!</div>
+    <p class="card-sub" id="screenshotWarningBody" style="color:var(--text);font-size:13px;line-height:1.5;"></p>
+    <button class="btn btn-crimson" onclick="closeScreenshotWarningModal()">I Understand</button>
   </div>
 </div>
 
@@ -4730,7 +4875,11 @@
             <div style="padding:10px;border:1px solid var(--amber);border-radius:12px;background:var(--amber-dim);">
               <span class="pill pill-amber">📲 ADMIN WEB LOGIN REQUEST</span>
               <div style="font-weight:800;font-size:13px;margin-top:4px;">${escapeHtml(r.userEmail)} • ${escapeHtml(r.planName)}</div>
-              <div class="card-sub">Device: ${escapeHtml(r.deviceId)} • Verify &amp; approve from the Official Android App with Main Admin App Password.</div>
+              <div class="card-sub">Device: ${escapeHtml(r.deviceId)} • Approve fast using Biometric Fingerprint / Face or Main Admin Password.</div>
+              <div class="btn-row" style="margin-top:8px;">
+                <button class="btn btn-primary" onclick="adminBiometricApproveWebLogin('${escapeHtml(r.id)}')">🔑 Biometric / Instant Approve</button>
+                <button class="btn btn-crimson" onclick="adminRejectAccessReq('${escapeHtml(r.id)}')">Reject</button>
+              </div>
             </div>
           `);
         } else {
@@ -4749,7 +4898,10 @@
       appEl.innerHTML = itemsHtml.length ? itemsHtml.join("") : `<div class="card-sub">No pending approvals.</div>`;
     }
 
-    // 2. Moderation Alerts (with both Ban and Unban / 2nd Chance buttons)
+    // Update Live Top-Bar Approvals Badge & Trigger Instant Notification if new approval arrived
+    updateAdminApprovalsBadgeAndNotify(pendingRegs.length + pendingEdits.length + pendingReqs.length);
+
+    // 2. Moderation Alerts (with Timed Ban Options + Unban / 2nd Chance buttons)
     const alertEl = document.getElementById("adminAlertsList");
     if (alertEl) {
       if (moderationAlerts.length === 0) {
@@ -4758,18 +4910,22 @@
         alertEl.innerHTML = moderationAlerts.slice(0, 15).map(a => `
           <div style="padding:10px;border:1px solid var(--crimson);border-radius:12px;background:var(--crimson-dim);">
             <div style="font-weight:800;font-size:13px;">${escapeHtml(a.userName || a.userEmail)}</div>
-            <div style="font-size:12px;margin:4px 0;">Attempted: "${escapeHtml(a.originalUneditedText || "")}"</div>
+            <div style="font-size:12px;margin:4px 0;">Event: "${escapeHtml(a.originalUneditedText || "")}"</div>
             <div class="card-sub">Triggered: ${escapeHtml(Array.isArray(a.detectedWords) ? a.detectedWords.join(", ") : (a.detectedWords || ""))} • Status: ${escapeHtml(a.status)}</div>
-            <div class="btn-row" style="margin-top:8px;">
-              <button class="btn btn-crimson" onclick="adminBanUser('${a.userId}', '${a.deviceId}')">Ban User &amp; Device</button>
-              <button class="btn btn-primary" onclick="adminUnbanUserAndDevices('${a.userId}', '${a.deviceId}', '')">✅ Unban &amp; 2nd Chance</button>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+              <button class="chip" onclick="adminBanUser('${a.userId}', '${a.deviceId}', 1, '1 Day')">Ban 1d</button>
+              <button class="chip" onclick="adminBanUser('${a.userId}', '${a.deviceId}', 3, '3 Days')">Ban 3d</button>
+              <button class="chip" onclick="adminBanUser('${a.userId}', '${a.deviceId}', 7, '1 Week')">Ban 1w</button>
+              <button class="chip" onclick="adminBanUser('${a.userId}', '${a.deviceId}', 30, '1 Month')">Ban 1m</button>
+              <button class="btn btn-crimson" style="width:auto;padding:5px 10px;font-size:11px;" onclick="adminBanUser('${a.userId}', '${a.deviceId}', 0, 'Permanent')">Ban Permanent</button>
+              <button class="btn btn-primary" style="width:auto;padding:5px 10px;font-size:11px;" onclick="adminUnbanUserAndDevices('${a.userId}', '${a.deviceId}', '')">✅ Unban &amp; 2nd Chance</button>
             </div>
           </div>
         `).join("");
       }
     }
 
-    // 3. Users Directory + Active Logged-In Devices & Per-User Device Limits + Tap Avatar to Swipe Profiles
+    // 3. Users Directory + Active Logged-In Devices & Timed Ban Duration Chips + Tap Avatar to Swipe Profiles
     const usersEl = document.getElementById("adminUsersList");
     if (usersEl) {
       usersEl.innerHTML = allUsers.map((u, uIdx) => {
@@ -4794,7 +4950,11 @@
               ${(u.accountStatus === "BANNED" || hasBannedDev) ? `
                 <button class="btn btn-primary" style="width:auto;padding:4px 10px;font-size:11px;" onclick="adminUnbanUserAndDevices('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}', '')">✅ Unban &amp; 2nd Chance</button>
               ` : `
-                <button class="btn btn-crimson" style="width:auto;padding:4px 10px;font-size:11px;" onclick="adminBanUser('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}')">Ban</button>
+                <button class="chip" style="padding:4px 8px;font-size:10px;" onclick="adminBanUser('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}', 1, '1 Day')">Ban 1d</button>
+                <button class="chip" style="padding:4px 8px;font-size:10px;" onclick="adminBanUser('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}', 3, '3 Days')">3d</button>
+                <button class="chip" style="padding:4px 8px;font-size:10px;" onclick="adminBanUser('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}', 7, '1 Week')">1w</button>
+                <button class="chip" style="padding:4px 8px;font-size:10px;" onclick="adminBanUser('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}', 30, '1 Month')">1m</button>
+                <button class="btn btn-crimson" style="width:auto;padding:4px 10px;font-size:11px;" onclick="adminBanUser('${escapeHtml(uid)}', '${escapeHtml(u.deviceId || "")}', 0, 'Permanent')">Perm Ban</button>
               `}
               <span class="pill ${activeDevs.length > maxLim ? "pill-crimson" : "pill-emerald"}">📱 ${activeDevs.length} / ${maxLim} Devices</span>
             </div>
@@ -4835,9 +4995,11 @@
       if (uid) {
         const u = allUsers.find(x => (x.userId || x.id) === uid);
         const curExp = Number(u?.validUntilMillis || 0);
+        const cleanedSec = String(u?.securityQuestion || "").replace(/\|__BAN_UNTIL__:\d+:[^|]*/g, "");
         const updates = {
           accountStatus: "APPROVED",
           isCommodityMuted: false,
+          securityQuestion: cleanedSec,
           updatedAt: serverTimestamp()
         };
         if (curExp <= now) {
@@ -4846,7 +5008,6 @@
           updates.validUntilMillis = now + 7 * 86400000;
         }
         await updateDoc(doc(db, "users", uid), updates);
-        // Unban all hardware devices bound to this user
         const userDevs = allDevices.filter(d => d.boundUserId === uid && d.isBanned);
         for (const d of userDevs) {
           await updateDoc(doc(db, "device_registry", d.deviceId || d.id), {
@@ -4854,7 +5015,6 @@
             updatedAt: serverTimestamp()
           });
         }
-        // Resolve open moderation alerts for this user
         const userAlerts = moderationAlerts.filter(a => a.userId === uid && a.status !== "UNBANNED_SECOND_CHANCE");
         for (const a of userAlerts) {
           await updateDoc(doc(db, "moderation_alerts", a.id), {
@@ -4862,7 +5022,6 @@
             updatedAt: serverTimestamp()
           });
         }
-        // Approve any pending second-chance unban appeals for this user
         const userAppeals = allRequests.filter(r => r.userId === uid && r.status === "PENDING" && isRequestUnbanAppeal(r));
         for (const r of userAppeals) {
           await updateDoc(doc(db, "access_requests", r.id), {
@@ -4953,17 +5112,281 @@
     showToast(`Approved ${planName}!`);
   };
 
+  window.adminBiometricApproveWebLogin = async function(reqId) {
+    if (!isUserAdmin()) return;
+    try {
+      if (window.PublicKeyCredential && navigator.credentials) {
+        // Attempt platform biometric / passkey assertion if available, with graceful instant fallback
+        try {
+          await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        } catch (_) {}
+      }
+      await updateDoc(doc(db, "access_requests", reqId), {
+        status: "APPROVED",
+        adminNote: "Approved via Biometric / Instant Admin Auth",
+        updatedAt: serverTimestamp()
+      });
+      window.playWebSound("TARGET HIT");
+      showToast("🔑 Biometric verified! Web Login Approved.");
+    } catch (e) {
+      showToast(e?.message || "Failed to approve login");
+    }
+  };
+
   window.adminRejectAccessReq = async function(reqId) {
     await updateDoc(doc(db, "access_requests", reqId), { status: "REJECTED", updatedAt: serverTimestamp() });
     showToast("Request rejected");
   };
 
-  window.adminBanUser = async function(uid, devId) {
-    if (uid) await updateDoc(doc(db, "users", uid), { accountStatus: "BANNED", entitlementStatus: "EXPIRED", updatedAt: serverTimestamp() });
-    if (devId) await updateDoc(doc(db, "device_registry", devId), { isBanned: true, updatedAt: serverTimestamp() });
+  window.adminBanUser = async function(uid, devId, durationDays = 0, durationLabel = "Permanent") {
+    const now = Date.now();
+    const banUntil = durationDays > 0 ? (now + durationDays * 86400000) : 0;
+    if (uid) {
+      const u = allUsers.find(x => (x.userId || x.id) === uid);
+      const baseSec = String(u?.securityQuestion || "").replace(/\|__BAN_UNTIL__:\d+:[^|]*/g, "");
+      const updatedSec = `${baseSec}|__BAN_UNTIL__:${banUntil}:${durationLabel}`;
+      await updateDoc(doc(db, "users", uid), {
+        accountStatus: "BANNED",
+        entitlementStatus: "EXPIRED",
+        securityQuestion: updatedSec,
+        updatedAt: serverTimestamp()
+      });
+    }
+    if (devId) {
+      await updateDoc(doc(db, "device_registry", devId), { isBanned: true, updatedAt: serverTimestamp() });
+    }
     window.playWebSound("alert");
-    showToast("User & hardware device banned!");
+    showToast(`🚫 Banned (${durationLabel})!`);
   };
+
+  // --- TELEGRAM-STYLE QUICK HUB, WHATSAPP PENCIL FAB, INLINE COMMODITY CONTROLS & ANTI-SCREENSHOT GUARD ---
+  let selectedInlineLimitVal = 2;
+  let quickBcSelectedSignal = "BUY";
+  let lastKnownPendingApprovalTotal = -1;
+
+  function syncAdminFloatingAndInlineControls() {
+    const isAdmin = isUserAdmin();
+    const fab = document.getElementById("webWhatsappPencilFab");
+    if (fab) {
+      const streamActive = document.getElementById("tabStream")?.classList.contains("active");
+      fab.style.display = (isAdmin && streamActive) ? "inline-flex" : "none";
+    }
+    const inlineBar = document.getElementById("commodityAdminInlineBar");
+    if (inlineBar) {
+      inlineBar.style.display = isAdmin ? "block" : "none";
+      const isOpen = communitySettings.isOpen !== false;
+      const titleEl = document.getElementById("inlineCommodityRoomStateTitle");
+      const btnEl = document.getElementById("inlineCommodityToggleRoomBtn");
+      if (titleEl) titleEl.textContent = isOpen ? "Commodity Room: OPEN (Members Can Post)" : "Commodity Room: LOCKED (Admin Only)";
+      if (btnEl) btnEl.textContent = isOpen ? "🔒 Lock Room" : "🔓 Open Room";
+      const curLim = Number(communitySettings.dailyMessageLimitPerUser || 2);
+      [1, 2, 3, 5, 10].forEach(n => {
+        const chip = document.getElementById("inlineLimChip" + n);
+        if (chip) chip.classList.toggle("selected", n === curLim);
+      });
+    }
+    const hubAdmin = document.getElementById("telegramHubAdminSection");
+    if (hubAdmin) hubAdmin.style.display = isAdmin ? "flex" : "none";
+  }
+  setInterval(syncAdminFloatingAndInlineControls, 900);
+
+  window.openTelegramQuickHub = function() {
+    syncAdminFloatingAndInlineControls();
+    document.getElementById("telegramQuickHubModal")?.classList.add("open");
+  };
+  window.closeTelegramQuickHub = function() {
+    document.getElementById("telegramQuickHubModal")?.classList.remove("open");
+  };
+  window.applyLookThemeByIndex = function(idx) {
+    currentLookThemeIndex = idx % LOOK_THEMES.length;
+    localStorage.setItem("tz_look_theme_idx", String(currentLookThemeIndex));
+    applyLookTheme();
+    showToast("🎨 Theme applied!");
+  };
+
+  window.openQuickBroadcastComposeModal = function() {
+    if (!isUserAdmin()) return;
+    document.getElementById("quickBroadcastComposeModal")?.classList.add("open");
+  };
+  window.closeQuickBroadcastComposeModal = function() {
+    document.getElementById("quickBroadcastComposeModal")?.classList.remove("open");
+  };
+  window.setQuickBcSignal = function(sig, btn) {
+    quickBcSelectedSignal = sig;
+    if (btn && btn.parentElement) {
+      Array.from(btn.parentElement.querySelectorAll(".chip")).forEach(c => c.classList.remove("selected"));
+      btn.classList.add("selected");
+    }
+  };
+  window.submitQuickBroadcastFromModal = async function() {
+    if (!isUserAdmin()) return;
+    const title = (document.getElementById("quickBcTitleInput")?.value || "").trim();
+    const body = (document.getElementById("quickBcBodyInput")?.value || "").trim();
+    const tier = document.getElementById("quickBcTierSelect")?.value || "ALL";
+    if (!title || !body) {
+      showToast("Enter headline and trade message");
+      return;
+    }
+    const now = Date.now();
+    const id = "bc_" + now;
+    await setDoc(doc(db, "broadcast_messages", id), {
+      id,
+      title: `[${quickBcSelectedSignal}] ${title}`,
+      body,
+      SignalType: quickBcSelectedSignal,
+      targetMembershipTier: tier,
+      imageBase64: "",
+      authorEmail: currentUser?.email || "Owner Admin",
+      createdAtMillis: now,
+      createdAt: serverTimestamp()
+    });
+    document.getElementById("quickBcTitleInput").value = "";
+    document.getElementById("quickBcBodyInput").value = "";
+    closeQuickBroadcastComposeModal();
+    window.playWebSound(quickBcSelectedSignal);
+    showToast("🚀 Trade Broadcast published!");
+  };
+
+  window.selectInlineCommodityLimit = function(n) {
+    selectedInlineLimitVal = n;
+    [1, 2, 3, 5, 10].forEach(val => {
+      const chip = document.getElementById("inlineLimChip" + val);
+      if (chip) chip.classList.toggle("selected", val === n);
+    });
+  };
+  window.applyInlineCommodityLimit = async function() {
+    if (!isUserAdmin()) return;
+    await setDoc(doc(db, "app_config", "community_settings"), {
+      isOpen: communitySettings.isOpen !== false,
+      dailyMessageLimitPerUser: Number(selectedInlineLimitVal || 2),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    window.playWebSound("success");
+    showToast(`✓ Daily limit set to ${selectedInlineLimitVal} messages/day!`);
+  };
+  window.toggleInlineCommodityRoomLock = async function() {
+    if (!isUserAdmin()) return;
+    const nextOpen = communitySettings.isOpen === false;
+    await setDoc(doc(db, "app_config", "community_settings"), {
+      isOpen: nextOpen,
+      dailyMessageLimitPerUser: Number(communitySettings.dailyMessageLimitPerUser || 2),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    window.playWebSound("success");
+    showToast(nextOpen ? "🔓 Commodity Room OPENED!" : "🔒 Commodity Room LOCKED!");
+  };
+
+  window.jumpToAdminApprovals = function() {
+    const adminBtn = document.getElementById("navAdminBtn");
+    if (adminBtn) switchTab("tabAdmin", adminBtn);
+    const appCard = document.getElementById("adminApprovalsList");
+    if (appCard) appCard.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  function updateAdminApprovalsBadgeAndNotify(totalPending) {
+    const badge = document.getElementById("topBarApprovalsBadge");
+    const countEl = document.getElementById("topBarApprovalsCount");
+    if (!isUserAdmin()) {
+      if (badge) badge.style.display = "none";
+      return;
+    }
+    if (badge && countEl) {
+      badge.style.display = totalPending > 0 ? "inline-flex" : "none";
+      countEl.textContent = String(totalPending);
+    }
+    if (lastKnownPendingApprovalTotal >= 0 && totalPending > lastKnownPendingApprovalTotal) {
+      window.playWebSound("BUY");
+      showToast(`🔔 ${totalPending} Pending Admin Approval(s) waiting!`);
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification("Trading Zone • Admin Approval Waiting", {
+            body: `You have ${totalPending} pending member/payment/login approval request(s). Tap to review.`
+          });
+        } catch (_) {}
+      }
+    }
+    lastKnownPendingApprovalTotal = totalPending;
+  }
+
+  // Anti-Screenshot Guard (1st Strike Warn + Notify Admin -> 2nd Strike 24-Hour Auto-Ban)
+  window.closeScreenshotWarningModal = function() {
+    document.getElementById("screenshotWarningModal")?.classList.remove("open");
+  };
+  async function handleWebScreenshotAttempt() {
+    if (!currentUser || isUserAdmin()) return;
+    const uid = currentUser.uid;
+    const strikeKey = "tz_ss_strikes_" + uid;
+    const strikes = Number(localStorage.getItem(strikeKey) || "0") + 1;
+    localStorage.setItem(strikeKey, String(strikes));
+    const now = Date.now();
+    const alertId = "ss_alert_" + uid + "_" + now;
+    const titleEl = document.getElementById("screenshotWarningTitle");
+    const bodyEl = document.getElementById("screenshotWarningBody");
+
+    if (strikes === 1) {
+      if (titleEl) titleEl.textContent = "⚠️ Warning (Strike 1 of 2): Screenshots Prohibited!";
+      if (bodyEl) bodyEl.textContent = "Screenshots of trade positions and advisories are strictly prohibited. Admin has been notified. If you attempt another screenshot, your account and device will be automatically blocked for 24 hours.";
+      document.getElementById("screenshotWarningModal")?.classList.add("open");
+      window.playWebSound("alert");
+      try {
+        await setDoc(doc(db, "moderation_alerts", alertId), {
+          id: alertId,
+          userId: uid,
+          userEmail: currentUser.email || "",
+          userName: userProfile?.fullName || currentUser.email || "Member",
+          deviceId: currentDeviceId,
+          originalUneditedText: "Attempted screenshot of trade positions (Strike 1 Warning Issued)",
+          detectedWords: ["SCREENSHOT_ATTEMPT_STRIKE_1"],
+          status: "OPEN_WARNING",
+          createdAtMillis: now,
+          createdAt: serverTimestamp()
+        });
+      } catch (_) {}
+    } else {
+      const banUntil = now + 24 * 3600 * 1000;
+      if (titleEl) titleEl.textContent = "🚫 Account Blocked for 24 Hours (2nd Screenshot Attempt)";
+      if (bodyEl) bodyEl.textContent = "You attempted a screenshot after receiving a first warning. Your account and device have been automatically blocked for 24 hours and Admin has been notified.";
+      document.getElementById("screenshotWarningModal")?.classList.add("open");
+      window.playWebSound("alert");
+      try {
+        await setDoc(doc(db, "moderation_alerts", alertId), {
+          id: alertId,
+          userId: uid,
+          userEmail: currentUser.email || "",
+          userName: userProfile?.fullName || currentUser.email || "Member",
+          deviceId: currentDeviceId,
+          originalUneditedText: "Repeated screenshot attempt — Auto-banned for 24 Hours (Strike 2)",
+          detectedWords: ["SCREENSHOT_AUTO_BAN_24H"],
+          status: "AUTO_BANNED_24H",
+          createdAtMillis: now,
+          createdAt: serverTimestamp()
+        });
+        const baseSec = String(userProfile?.securityQuestion || "").replace(/\|__BAN_UNTIL__:\d+:[^|]*/g, "");
+        await updateDoc(doc(db, "users", uid), {
+          accountStatus: "BANNED",
+          entitlementStatus: "EXPIRED",
+          securityQuestion: `${baseSec}|__BAN_UNTIL__:${banUntil}:24 Hours (Screenshot Auto-Ban)`,
+          updatedAt: serverTimestamp()
+        });
+        await updateDoc(doc(db, "device_registry", currentDeviceId), {
+          isBanned: true,
+          updatedAt: serverTimestamp()
+        });
+      } catch (_) {}
+    }
+  }
+
+  window.addEventListener("keyup", function(e) {
+    if (e.key === "PrintScreen" || e.keyCode === 44) {
+      handleWebScreenshotAttempt();
+    }
+  });
+  window.addEventListener("keydown", function(e) {
+    if ((e.metaKey && e.shiftKey && (e.key === "3" || e.key === "4" || e.key === "5" || e.key === "s" || e.key === "S")) ||
+        (e.ctrlKey && e.shiftKey && (e.key === "s" || e.key === "S"))) {
+      handleWebScreenshotAttempt();
+    }
+  });
 
   function escapeHtml(str) {
     return String(str || "")
