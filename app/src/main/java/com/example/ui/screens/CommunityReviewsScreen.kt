@@ -101,6 +101,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.data.local.LiveMarketEngine
 import com.example.data.local.MarketInstrumentQuote
 import com.example.data.model.AutoTopicClassifier
 import com.example.data.model.BroadcastMessage
@@ -110,6 +111,7 @@ import com.example.data.model.PricingConfig
 import com.example.data.model.TELEGRAM_REACTION_EMOJIS
 import com.example.data.model.TodayProfitBanner
 import com.example.data.model.UserProfile
+import com.example.ui.components.AttachedLiveMarketSetupCard
 import com.example.ui.components.LiveMarketWatchboardCard
 import com.example.util.ImageBase64Util
 import java.text.SimpleDateFormat
@@ -150,6 +152,7 @@ fun CommunityReviewsScreen(
     liveMarketQuotes: List<MarketInstrumentQuote> = emptyList(),
     onOpenAdminMarketSearch: () -> Unit = {},
     onSelectMarketQuote: (MarketInstrumentQuote) -> Unit = {},
+    onOpenTradeSetupForQuote: (MarketInstrumentQuote) -> Unit = {},
     onUpdateCommodityModerationRules: (slowModeSeconds: Int, blockLinks: Boolean, customWordsCsv: String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
@@ -649,7 +652,8 @@ fun CommunityReviewsScreen(
                             quotes = liveMarketQuotes,
                             isAdmin = isAdmin,
                             onOpenAdminSearchDialog = onOpenAdminMarketSearch,
-                            onSelectQuote = onSelectMarketQuote
+                            onSelectQuote = onSelectMarketQuote,
+                            onOpenSetMarketWithMessage = onOpenTradeSetupForQuote
                         )
                     }
                 }
@@ -779,7 +783,9 @@ fun CommunityReviewsScreen(
                                     compactMode = compactFeedMode,
                                     onReact = { emoji -> onToggleReaction(targetId, emoji) },
                                     onTogglePin = { onTogglePinReview(review.id, !review.isPinned) },
-                                    onDelete = { onDeleteReview(review.id) }
+                                    onDelete = { onDeleteReview(review.id) },
+                                    liveMarketQuotes = liveMarketQuotes,
+                                    onSelectMarketQuote = onSelectMarketQuote
                                 )
                             }
                         }
@@ -1355,7 +1361,9 @@ private fun CommodityReviewCard(
     compactMode: Boolean = false,
     onReact: (String) -> Unit,
     onTogglePin: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    liveMarketQuotes: List<MarketInstrumentQuote> = emptyList(),
+    onSelectMarketQuote: (MarketInstrumentQuote) -> Unit = {}
 ) {
     val dateFormat = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
     val avatarBitmap = remember(review.userPhotoBase64) {
@@ -1513,11 +1521,32 @@ private fun CommodityReviewCard(
                 }
             }
 
-            Text(
-                text = review.publicContent,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            val (attachedSetup, cleanReviewContent) = remember(review.publicContent) {
+                LiveMarketEngine.parseMessageWithMarketSetup(review.publicContent)
+            }
+
+            if (attachedSetup != null) {
+                val matchedQuote = remember(liveMarketQuotes, attachedSetup.symbolId) {
+                    liveMarketQuotes.firstOrNull { it.symbolId.equals(attachedSetup.symbolId, ignoreCase = true) }
+                }
+                AttachedLiveMarketSetupCard(
+                    setup = attachedSetup,
+                    liveQuote = matchedQuote,
+                    onOpenLiveChart = if (matchedQuote != null) {
+                        { onSelectMarketQuote(matchedQuote) }
+                    } else {
+                        null
+                    }
+                )
+            }
+
+            if (cleanReviewContent.isNotBlank()) {
+                Text(
+                    text = cleanReviewContent,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
 
             if (review.hasBlurredWords) {
                 Row(

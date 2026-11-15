@@ -92,6 +92,8 @@ import com.example.data.model.DeviceRecord
 import com.example.data.model.MessageReadReceipt
 import com.example.data.model.PricingConfig
 import com.example.data.model.UserProfile
+import com.example.data.local.LiveMarketEngine
+import com.example.ui.components.AttachedLiveMarketSetupCard
 import com.example.ui.components.ImageCodecHelper
 import com.example.ui.components.LiveMarketWatchboardCard
 import com.example.ui.components.SwipeableGalleryItem
@@ -181,6 +183,7 @@ fun BroadcastStreamScreen(
     liveMarketQuotes: List<MarketInstrumentQuote> = emptyList(),
     onOpenAdminMarketSearch: () -> Unit = {},
     onSelectMarketQuote: (MarketInstrumentQuote) -> Unit = {},
+    onOpenTradeSetupForQuote: (MarketInstrumentQuote) -> Unit = {},
     onQuickPublishBroadcast: (
         title: String,
         content: String,
@@ -482,7 +485,8 @@ fun BroadcastStreamScreen(
                             quotes = liveMarketQuotes,
                             isAdmin = isAdmin,
                             onOpenAdminSearchDialog = onOpenAdminMarketSearch,
-                            onSelectQuote = onSelectMarketQuote
+                            onSelectQuote = onSelectMarketQuote,
+                            onOpenSetMarketWithMessage = onOpenTradeSetupForQuote
                         )
                     }
                 }
@@ -552,7 +556,9 @@ fun BroadcastStreamScreen(
                                 },
                                 onReply = { onReplyToMessageRequest(message) },
                                 onEdit = { onEditMessageRequest(message) },
-                                onDelete = { onDeleteMessageRequest(message.id) }
+                                onDelete = { onDeleteMessageRequest(message.id) },
+                                liveMarketQuotes = liveMarketQuotes,
+                                onSelectMarketQuote = onSelectMarketQuote
                             )
                         }
                     }
@@ -592,6 +598,11 @@ fun BroadcastStreamScreen(
     if (showQuickComposeDialog && isAdmin) {
         QuickBroadcastComposeDialog(
             pricingConfig = pricingConfig,
+            liveMarketQuotes = liveMarketQuotes,
+            onOpenFullMarketSetup = { quote ->
+                showQuickComposeDialog = false
+                onOpenTradeSetupForQuote(quote)
+            },
             onDismiss = { showQuickComposeDialog = false },
             onPublish = { title, content, tier, sig, photo ->
                 onQuickPublishBroadcast(title, content, tier, sig, photo)
@@ -604,6 +615,8 @@ fun BroadcastStreamScreen(
 @Composable
 private fun QuickBroadcastComposeDialog(
     pricingConfig: PricingConfig,
+    liveMarketQuotes: List<MarketInstrumentQuote> = emptyList(),
+    onOpenFullMarketSetup: (MarketInstrumentQuote) -> Unit = {},
     onDismiss: () -> Unit,
     onPublish: (title: String, content: String, targetTier: String, signalType: String, markedPhotoBase64: String) -> Unit
 ) {
@@ -657,6 +670,29 @@ private fun QuickBroadcastComposeDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                if (liveMarketQuotes.isNotEmpty()) {
+                    Button(
+                        onClick = {
+                            SoundAndHapticFeedback.playTap(context)
+                            val firstPinned = liveMarketQuotes.firstOrNull { it.isPinned } ?: liveMarketQuotes.first()
+                            onOpenFullMarketSetup(firstPinned)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFFC400),
+                            contentColor = Color.Black
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("open_full_market_target_setup_button")
+                    ) {
+                        Text(
+                            text = "🎯 Set Live Market & Targets with Message (Gold/Silver/Nifty)",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+
                 Text(
                     text = "⚡ 1-Tap Broadcast Quick Templates",
                     style = MaterialTheme.typography.labelMedium,
@@ -832,7 +868,9 @@ private fun BroadcastMessageCard(
     onExpandPhoto: (String) -> Unit,
     onReply: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    liveMarketQuotes: List<MarketInstrumentQuote> = emptyList(),
+    onSelectMarketQuote: (MarketInstrumentQuote) -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -1204,15 +1242,37 @@ private fun BroadcastMessageCard(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Text(
-                        text = message.content,
-                        style = if (largeTextMode) {
-                            MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, lineHeight = 26.sp)
-                        } else {
-                            MaterialTheme.typography.bodyLarge
-                        },
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    val (attachedSetup, cleanMessageText) = remember(message.content) {
+                        LiveMarketEngine.parseMessageWithMarketSetup(message.content)
+                    }
+
+                    if (attachedSetup != null) {
+                        val matchedQuote = remember(liveMarketQuotes, attachedSetup.symbolId) {
+                            liveMarketQuotes.firstOrNull { it.symbolId.equals(attachedSetup.symbolId, ignoreCase = true) }
+                        }
+                        AttachedLiveMarketSetupCard(
+                            setup = attachedSetup,
+                            liveQuote = matchedQuote,
+                            onOpenLiveChart = if (matchedQuote != null) {
+                                { onSelectMarketQuote(matchedQuote) }
+                            } else {
+                                null
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+
+                    if (cleanMessageText.isNotBlank()) {
+                        Text(
+                            text = cleanMessageText,
+                            style = if (largeTextMode) {
+                                MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, lineHeight = 26.sp)
+                            } else {
+                                MaterialTheme.typography.bodyLarge
+                            },
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
 
                     if (message.markedPhotoBase64.isNotBlank()) {
                         val chartBmp = remember(message.markedPhotoBase64) {

@@ -62,6 +62,7 @@ import com.example.service.TradingBackgroundService
 import com.example.ui.components.AdminMarketSearchAndPinDialog
 import com.example.ui.components.LiveMarketDetailDialog
 import com.example.ui.components.LiveMarketTopTickerStrip
+import com.example.ui.components.LiveMarketTradeSetupDialog
 import com.example.ui.components.MandatoryFirmwareUpdateScreen
 import com.example.ui.components.NotificationHelper
 import com.example.ui.components.PermanentQrAndShareCard
@@ -329,6 +330,7 @@ fun AuthenticatedTradingWorkspace(
     var showTelegramQuickDrawer by remember { mutableStateOf(false) }
     var showAdminMarketSearchDialog by remember { mutableStateOf(false) }
     var selectedMarketQuoteForDetail by remember { mutableStateOf<MarketInstrumentQuote?>(null) }
+    var activeTradeSetupRequest by remember { mutableStateOf<Triple<MarketInstrumentQuote, String, String>?>(null) }
 
     val totalPendingAdminApprovals = remember(isAdmin, allUsersForAdmin, allAccessRequestsForAdmin, moderationAlertsForAdmin) {
         if (!isAdmin) {
@@ -933,6 +935,9 @@ fun AuthenticatedTradingWorkspace(
                                     liveMarketQuotes = liveMarketQuotes,
                                     onOpenAdminMarketSearch = { showAdminMarketSearchDialog = true },
                                     onSelectMarketQuote = { selectedMarketQuoteForDetail = it },
+                                    onOpenTradeSetupForQuote = { quote ->
+                                        activeTradeSetupRequest = Triple(quote, "BUY", "15m")
+                                    },
                                     onQuickPublishBroadcast = { title, content, targetTier, signalType, photoBase64 ->
                                         val encodedLinkTitle = BroadcastMessage.encodeLinkTitleWithMeta(
                                             plainLinkTitle = "",
@@ -1002,6 +1007,9 @@ fun AuthenticatedTradingWorkspace(
                                     liveMarketQuotes = liveMarketQuotes,
                                     onOpenAdminMarketSearch = { showAdminMarketSearchDialog = true },
                                     onSelectMarketQuote = { selectedMarketQuoteForDetail = it },
+                                    onOpenTradeSetupForQuote = { quote ->
+                                        activeTradeSetupRequest = Triple(quote, "BUY", "15m")
+                                    },
                                     onUpdateCommodityModerationRules = { slowSec, blockLinks, customWords ->
                                         viewModel.updateCommodityModerationRules(slowSec, blockLinks, customWords)
                                     }
@@ -1551,30 +1559,57 @@ fun AuthenticatedTradingWorkspace(
             onSelectQuoteForDetail = { quote ->
                 selectedMarketQuoteForDetail = quote
             },
+            onOpenTradeSetupForQuote = { quote, sigType ->
+                activeTradeSetupRequest = Triple(quote, sigType, "15m")
+            },
             onDismiss = { showAdminMarketSearchDialog = false }
         )
     }
 
-    // Investing.com-Style Live Market Instrument Detail Dialog
-    selectedMarketQuoteForDetail?.let { quote ->
+    // Investing.com-Style Live Market Instrument Detail Dialog (Live-ticking multi-timeframe candlesticks)
+    selectedMarketQuoteForDetail?.let { initialQuote ->
+        val liveQuote = liveMarketQuotes.firstOrNull { it.symbolId == initialQuote.symbolId } ?: initialQuote
         LiveMarketDetailDialog(
-            quote = quote,
+            quote = liveQuote,
             isAdmin = isAdmin,
             onTogglePin = {
-                viewModel.togglePinnedMarketSymbol(quote.symbolId, !quote.isPinned)
-                selectedMarketQuoteForDetail = quote.copy(isPinned = !quote.isPinned)
+                viewModel.togglePinnedMarketSymbol(liveQuote.symbolId, !liveQuote.isPinned)
+                selectedMarketQuoteForDetail = liveQuote.copy(isPinned = !liveQuote.isPinned)
             },
-            onAdminQuickBroadcastQuote = { title, content, signalType ->
+            onOpenTradeSetupPage = { sigType, tf ->
+                selectedMarketQuoteForDetail = null
+                activeTradeSetupRequest = Triple(liveQuote, sigType, tf)
+            },
+            onDismiss = { selectedMarketQuoteForDetail = null }
+        )
+    }
+
+    // Dedicated "Set Target & Write Message" Page for Live Market Calls
+    activeTradeSetupRequest?.let { (initialQuote, initialSig, initialTf) ->
+        val tierOpts = remember(pricingConfig) {
+            val dynamicPlans = pricingConfig.availablePlans().map { it.name to "🎯 ${it.name}" }
+            listOf(
+                "ALL" to "🌐 All Members",
+                "PAID_ONLY" to "💎 Paid Members Only"
+            ) + dynamicPlans
+        }
+        LiveMarketTradeSetupDialog(
+            allQuotes = liveMarketQuotes,
+            initialQuote = initialQuote,
+            initialSignalType = initialSig,
+            initialTimeframe = initialTf,
+            availableTiers = tierOpts,
+            onPublishToBroadcast = { title, formattedContentWithSetup, category, riskLevel, targetTier, signalType ->
                 val encodedLinkTitle = BroadcastMessage.encodeLinkTitleWithMeta(
                     plainLinkTitle = "",
-                    targetTier = "ALL",
+                    targetTier = targetTier,
                     signalType = signalType
                 )
                 viewModel.publishMessage(
                     title = title,
-                    content = content,
-                    category = quote.category,
-                    riskLevel = "MEDIUM",
+                    content = formattedContentWithSetup,
+                    category = category,
+                    riskLevel = riskLevel,
                     markedPhotoBase64 = "",
                     linkUrl = "",
                     linkTitle = encodedLinkTitle,
@@ -1584,9 +1619,20 @@ fun AuthenticatedTradingWorkspace(
                     replyToSnippet = "",
                     replyToRiskLevel = ""
                 )
-                selectedMarketQuoteForDetail = null
+                activeTradeSetupRequest = null
             },
-            onDismiss = { selectedMarketQuoteForDetail = null }
+            onPostToCommodity = { topicTag, formattedOpinionWithSetup ->
+                viewModel.submitCommunityReview(
+                    tradeMessageId = "commodity_general",
+                    tradeMessageTitle = "Live Market Setup • $topicTag",
+                    tradeRiskLevel = "MEDIUM",
+                    topicTag = topicTag,
+                    opinionText = formattedOpinionWithSetup,
+                    rating = 5
+                )
+                activeTradeSetupRequest = null
+            },
+            onDismiss = { activeTradeSetupRequest = null }
         )
     }
 
