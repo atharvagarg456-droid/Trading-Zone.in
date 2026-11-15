@@ -713,6 +713,103 @@
       border-radius: 12px;
       display: inline-block;
     }
+    /* Google-Style Progressive Step-by-Step Auth Card */
+    .google-email-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      margin: 4px auto 12px;
+      max-width: 100%;
+    }
+    .google-email-pill:hover {
+      border-color: var(--emerald);
+    }
+    .step-dots {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .step-dot {
+      height: 6px;
+      width: 24px;
+      border-radius: 999px;
+      background: var(--border);
+      transition: all 0.25s ease;
+    }
+    .step-dot.active {
+      width: 42px;
+      background: var(--emerald);
+    }
+    .step-dot.done {
+      background: rgba(0, 230, 118, 0.5);
+    }
+    /* ADAPTIVE WIDESCREEN LAYOUT FOR WINDOWS, MAC, TABLETS & ALL SCREEN SIZES */
+    @media (min-width: 768px) {
+      .app-shell {
+        max-width: 1180px;
+        width: 100%;
+        padding: 0 20px;
+      }
+      .app-shell::before {
+        width: min(980px, 92vw);
+        height: 280px;
+      }
+      .top-bar {
+        border-radius: 0 0 20px 20px;
+        padding-left: 24px;
+        padding-right: 24px;
+      }
+      .content {
+        padding: 20px 8px 110px;
+        gap: 18px;
+      }
+      #gateAuth, #gatePin, #gateAdminWebVerify, #gateDeviceLimit, #gateRegistration, #gateStatus, #gateFirmwareUpdate {
+        max-width: 480px;
+        width: 100%;
+        margin: 18px auto;
+      }
+      .bottom-nav {
+        max-width: 820px;
+        bottom: 14px;
+        border-radius: 20px;
+        border: 1px solid var(--border);
+        box-shadow: 0 16px 42px rgba(0, 0, 0, 0.55);
+        padding: 8px 14px;
+      }
+      .nav-item {
+        flex-direction: row;
+        font-size: 13px;
+        gap: 8px;
+        padding: 10px 18px;
+      }
+    }
+    @media (min-width: 980px) {
+      .app-shell {
+        max-width: 1280px;
+      }
+      #broadcastList, #commodityList {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+        gap: 16px !important;
+        align-items: start;
+      }
+      #buyerPlansContainer {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+        gap: 16px !important;
+        align-items: start;
+      }
+    }
   </style>
 </head>
 <body>
@@ -815,11 +912,11 @@
   </header>
 
   <main class="content">
-    <!-- GATE 1: INSTAGRAM-STYLE EMAIL + PASSWORD LOGIN + OPTIONAL USER 2-STEP VERIFICATION -->
+    <!-- GATE 1: GOOGLE-STYLE PROGRESSIVE 3-STEP LOGIN & CREATE ACCOUNT (STEP 1 EMAIL -> STEP 2 PASSWORD -> STEP 3 2FA) -->
     <section id="gateAuth" class="screen active">
-      <div class="card" style="text-align:center;padding:24px 18px;">
+      <div class="card" style="text-align:center;padding:26px 22px;">
         <div style="display:flex;justify-content:center;margin-bottom:10px;">
-          <svg class="premium-crest-svg" width="76" height="76" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
+          <svg class="premium-crest-svg" width="72" height="72" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
             <polygon points="54,10 92,32 92,76 54,98 16,76 16,32" fill="#081428" stroke="#FFD54F" stroke-width="4.5"/>
             <rect x="33" y="54" width="8" height="19" rx="4" fill="#FFD54F"/>
             <rect x="49" y="42" width="8" height="31" rx="4" fill="#00E676"/>
@@ -827,56 +924,139 @@
             <polyline points="28,66 47,48 56,55 76,30" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
-        <div class="pill pill-emerald" style="margin-bottom:10px;">PASSWORD PROTECTED • MULTI-DEVICE GUARD</div>
-        <h1 style="font-size:22px;font-weight:900;margin-bottom:8px;">Trading Zone Live</h1>
-        <p class="card-sub" style="margin-bottom:16px;text-align:center;">
-          No one can log in with just an email address — an <strong>Account Password</strong> is required for every account (like Instagram). Users can also optionally enable 2-Step Verification, and Admin/Co-Admin web logins require verification from the Official Android App.
-        </p>
-        <button class="btn btn-primary" onclick="signInWithGoogle()" style="height:48px;font-size:15px;">
-          <span>🔐</span><span>Continue with Google Sign-In</span>
-        </button>
 
-        <!-- Instagram-Style Email + Password + Optional 2-Step PIN Sign-In / Registration -->
-        <div id="twoStepAuthCard" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:left;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
-            <span style="font-size:12px;font-weight:800;color:var(--emerald);">
-              🛡️ Email + Password Sign-In / Registration
-            </span>
-            <span class="pill pill-blue" style="font-size:10px;">OPTIONAL 2-STEP</span>
+        <!-- Sign In vs Create New Account Mode Switcher -->
+        <div class="chip-row" style="justify-content:center;margin-bottom:12px;">
+          <button type="button" class="chip selected" id="authModeSignInTab" onclick="setWebAuthMode('signin')" style="padding:7px 18px;font-size:13px;">🔑 Sign In</button>
+          <button type="button" class="chip" id="authModeSignUpTab" onclick="setWebAuthMode('signup')" style="padding:7px 18px;font-size:13px;">✨ Create New Account</button>
+        </div>
+
+        <!-- Step Progress Indicator (1: Email -> 2: Password -> 3: 2-Step Verification) -->
+        <div class="step-dots">
+          <div class="step-dot active" id="authStepDot1" title="Step 1: Email"></div>
+          <div class="step-dot" id="authStepDot2" title="Step 2: Password"></div>
+          <div class="step-dot" id="authStepDot3" title="Step 3: Two-Step Verification"></div>
+        </div>
+
+        <h1 style="font-size:22px;font-weight:900;margin-bottom:4px;" id="authMainHeadline">Sign in to Trading Zone</h1>
+        <p class="card-sub" id="authMainSubtitle" style="margin-bottom:16px;text-align:center;">
+          Step 1 of 3 • Enter your Email Address or continue with Google
+        </p>
+
+        <!-- STEP 1: EMAIL ADDRESS ENTRY + GOOGLE SIGN-IN -->
+        <div id="authStep1Box" style="display:flex;flex-direction:column;gap:12px;text-align:left;">
+          <div>
+            <label style="font-size:12px;font-weight:800;color:var(--emerald);display:block;margin-bottom:6px;">Email Address</label>
+            <input id="iosDirectEmailInput" class="input" type="email" autocomplete="email" placeholder="Enter your email address" onkeydown="if(event.key==='Enter')submitAuthStep1Email()" />
           </div>
-          <p class="card-sub" id="twoStepHelperText" style="margin-bottom:10px;">
-            Enter your Email and Account Password (minimum 6 characters). If you enabled 2-Step Verification (or are Admin/Co-Admin), also enter your 4–8 digit Step 2 PIN:
-          </p>
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <input id="iosDirectEmailInput" class="input" type="email" autocomplete="email" placeholder="Email Address (e.g. member@example.com)" />
-            <input id="iosDirectPasswordInput" class="input" type="password" autocomplete="current-password" placeholder="Account Password (or leave blank to use 4-Digit Device Code)" />
-            <input id="iosDirectPinInput" class="input" type="password" inputmode="numeric" maxlength="8" placeholder="4-Digit Device Code or Step 2 PIN (Optional)" />
-            <div class="btn-row">
-              <button class="btn btn-primary" onclick="signInIosDirectEmail()">
-                <span>🔒</span><span>Sign In with Password</span>
-              </button>
-              <button class="btn btn-amber" onclick="sendQuickEmailLoginOtp()">
-                <span>📲</span><span>Send 4-Digit Code to Logged-In Device</span>
-              </button>
-            </div>
-            <div id="authQuickOtpStatusBox" style="display:none;padding:10px;border-radius:12px;background:rgba(0,230,118,0.12);border:1px solid var(--emerald);font-size:12px;color:var(--text);"></div>
+
+          <button type="button" class="btn btn-primary" onclick="submitAuthStep1Email()" style="height:48px;font-size:15px;">
+            <span>Next</span><span>→</span>
+          </button>
+
+          <div style="display:flex;align-items:center;gap:10px;margin:4px 0;">
+            <div style="flex:1;height:1px;background:var(--border);"></div>
+            <span style="font-size:11px;color:var(--muted);font-weight:700;">OR</span>
+            <div style="flex:1;height:1px;background:var(--border);"></div>
+          </div>
+
+          <button type="button" class="btn btn-outline" onclick="signInWithGoogle()" style="height:48px;font-size:14px;border-color:rgba(255,255,255,0.22);background:var(--surface-elevated);">
+            <svg width="18" height="18" viewBox="0 0 48 48" style="flex-shrink:0;">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            <span>Continue with Google</span>
+          </button>
+
+          <div style="text-align:center;margin-top:4px;">
+            <button type="button" class="btn btn-outline" id="authSwitchModeFooterBtn" onclick="toggleWebAuthMode()" style="border:none;background:transparent;color:var(--emerald);font-size:12px;padding:6px;">
+              Don't have an account? Create New Account
+            </button>
           </div>
         </div>
 
-        <div style="margin-top:12px;font-size:11px;color:var(--muted);text-align:center;">
-          Device ID: <span id="welcomeDeviceId"></span> • Active Device &amp; Session Guard Enabled
+        <!-- STEP 2: ACCOUNT PASSWORD ENTRY (SHOWN AFTER STEP 1 EMAIL) -->
+        <div id="authStep2Box" style="display:none;flex-direction:column;gap:12px;text-align:left;">
+          <div style="text-align:center;">
+            <button type="button" class="google-email-pill" onclick="goToAuthStep1()" title="Click to change email address">
+              <span>👤</span>
+              <span id="authStep2EmailPillText"></span>
+              <span style="color:var(--emerald);font-size:11px;">✎</span>
+            </button>
+          </div>
+
+          <div>
+            <label id="authStep2PasswordLabel" style="font-size:12px;font-weight:800;color:var(--emerald);display:block;margin-bottom:6px;">Enter your password</label>
+            <div style="position:relative;display:flex;align-items:center;">
+              <input id="iosDirectPasswordInput" class="input" type="password" autocomplete="current-password" placeholder="Enter password (min 6 characters)" style="padding-right:68px;" onkeydown="if(event.key==='Enter')submitAuthStep2Password()" />
+              <button type="button" onclick="toggleAuthPasswordShow()" id="authShowPassBtn" style="position:absolute;right:10px;background:none;border:none;color:var(--emerald);font-size:11px;font-weight:800;cursor:pointer;">Show</button>
+            </div>
+          </div>
+
+          <div id="authStep2ConfirmWrap" style="display:none;">
+            <label style="font-size:12px;font-weight:800;color:var(--emerald);display:block;margin-bottom:6px;">Confirm new password</label>
+            <input id="iosDirectConfirmPasswordInput" class="input" type="password" autocomplete="new-password" placeholder="Re-enter your new password" onkeydown="if(event.key==='Enter')submitAuthStep2Password()" />
+          </div>
+
+          <div class="btn-row" style="margin-top:4px;">
+            <button type="button" class="btn btn-outline" style="width:auto;padding:12px 18px;" onclick="goToAuthStep1()">← Back</button>
+            <button type="button" class="btn btn-primary" style="flex:1;height:48px;font-size:15px;" onclick="submitAuthStep2Password()">
+              <span>Next</span><span>→</span>
+            </button>
+          </div>
+
+          <button type="button" id="step2QuickOtpBtn" class="btn btn-amber" onclick="sendQuickEmailLoginOtp()" style="margin-top:2px;">
+            <span>📲</span><span>Forgot Password? Send 4-Digit Code to Logged-In Device</span>
+          </button>
+        </div>
+
+        <!-- STEP 3: TWO-STEP VERIFICATION (SHOWN AFTER PASSWORD IS VERIFIED) -->
+        <div id="authStep3Box" style="display:none;flex-direction:column;gap:12px;text-align:left;">
+          <div style="text-align:center;">
+            <button type="button" class="google-email-pill" onclick="goToAuthStep1()">
+              <span>🛡️</span>
+              <span id="authStep3EmailPillText"></span>
+            </button>
+          </div>
+
+          <div id="authQuickOtpStatusBox" style="padding:12px;border-radius:12px;background:rgba(0,230,118,0.12);border:1px solid var(--emerald);font-size:12px;color:var(--text);">
+            📲 <strong>2-Step Verification Active</strong><br/>
+            Enter the <strong>4-Digit Code</strong> sent to your logged-in device (or tap <strong>Approve Login</strong> on that device), or enter your <strong>4–8 digit Step 2 PIN</strong>:
+          </div>
+
+          <div>
+            <label id="authStep3PinLabel" style="font-size:12px;font-weight:800;color:var(--emerald);display:block;margin-bottom:6px;">4-Digit Device Code or Step 2 PIN</label>
+            <input id="iosDirectPinInput" class="input" type="password" inputmode="numeric" maxlength="8" placeholder="Enter 4-digit code or Step 2 PIN" onkeydown="if(event.key==='Enter')submitAuthStep3TwoFactor()" />
+          </div>
+
+          <div class="btn-row">
+            <button type="button" class="btn btn-outline" style="width:auto;padding:12px 18px;" onclick="goToAuthStep2()">← Back</button>
+            <button type="button" class="btn btn-primary" style="flex:1;height:48px;font-size:15px;" onclick="submitAuthStep3TwoFactor()">
+              <span>✅ Verify &amp; Continue</span>
+            </button>
+          </div>
+
+          <button type="button" id="step3ResendOtpBtn" class="btn btn-outline" onclick="sendQuickEmailLoginOtp()">
+            <span>🔄</span><span>Resend 4-Digit Code to Logged-In Device</span>
+          </button>
+        </div>
+
+        <div style="margin-top:14px;font-size:11px;color:var(--muted);text-align:center;">
+          Device ID: <span id="welcomeDeviceId"></span> • Windows, Mac, iOS &amp; Android Synced
         </div>
       </div>
 
-      <!-- Permanent Website QR Card right on Welcome screen too -->
+      <!-- Unified Official Website & Android App QR Card -->
       <div class="card">
-        <div class="card-title">📲 Install on Apple iPhone / iPad or Scan Zero-404 QR</div>
+        <div class="card-title">🌐 Official Website &amp; Android App QR</div>
         <p class="card-sub">
-          On iPhone or iPad Safari, tap <strong>Share (⬆️) → Add to Home Screen</strong> to install Trading Zone like a native iOS app with instant alerts.
+          Works seamlessly on Windows, Mac, Google Chrome, Apple Safari, and Android. On iPhone/iPad Safari, tap <strong>Share (⬆️) → Add to Home Screen</strong>.
         </p>
         <div style="margin-top:10px;" class="btn-row">
-          <button class="btn btn-outline" onclick="openQrShareModal()">Show Zero-404 Apple QR</button>
-          <button class="btn btn-outline" onclick="shareAppleWebsiteLink()">Share Apple Link</button>
+          <button class="btn btn-outline" onclick="openQrShareModal()">🔳 Show Website &amp; App QR</button>
+          <button class="btn btn-outline" onclick="shareAppleWebsiteLink()">📤 Share Website Link</button>
         </div>
       </div>
     </section>
@@ -1264,20 +1444,20 @@
         </div>
       </div>
 
-      <!-- Permanent Website QR Code & Apple/Android Share Card (Zero-404 Default) -->
+      <!-- Official Website QR Code & Android App Share Card -->
       <div class="card" style="border-color:rgba(16,185,129,0.45);">
-        <div class="pill pill-emerald" style="margin-bottom:6px;">ZERO-404 APPLE QR &amp; ANDROID SHARE</div>
-        <div class="card-title">Permanent Website QR Code</div>
+        <div class="pill pill-emerald" style="margin-bottom:6px;">OFFICIAL WEBSITE &amp; ANDROID APP QR</div>
+        <div class="card-title">Official Website QR Code</div>
         <p class="card-sub" style="margin-bottom:12px;">
-          Scan with any Apple iPhone, iPad, or Android camera to open Trading Zone immediately with zero 404 errors.
+          Scan with any iPhone, iPad, Android, Windows, or Mac camera to open Trading Zone immediately.
         </p>
         <div class="qr-box" id="settingsPermanentQrBox"></div>
         <div style="font-size:11px;color:var(--emerald);text-align:center;margin:8px 0;word-break:break-all;" id="permanentWebUrlLabel">
-          https://raw.githack.com/atharvagarg456-droid/Trading-Zone.in/main/docs/index.html
+          https://atharvagarg456-droid.github.io/Trading-Zone.in/
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" onclick="shareAppleWebsiteLink()">📤 Share Apple Website</button>
-          <button class="btn btn-outline" onclick="shareBothLinks()">📲 Share Both Links</button>
+          <button class="btn btn-primary" onclick="shareAppleWebsiteLink()">📤 Share Website Link</button>
+          <button class="btn btn-outline" onclick="openQrShareModal()">🔳 Website &amp; APK QR</button>
         </div>
       </div>
 
@@ -1632,6 +1812,30 @@
   </div>
 </div>
 
+<!-- MODAL: GOOGLE ACCOUNT QUICK SIGN-IN (WORKS ACROSS ALL BROWSERS & DOMAINS) -->
+<div id="googleQuickSignInModal" class="modal-backdrop" onclick="if(event.target===this)closeGoogleQuickSignInModal()">
+  <div class="modal-card" style="text-align:center;">
+    <div style="display:flex;justify-content:center;margin-bottom:4px;">
+      <svg width="36" height="36" viewBox="0 0 48 48">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+    </div>
+    <div class="card-title" style="font-size:18px;text-align:center;">Sign in with Google</div>
+    <p class="card-sub" style="text-align:center;">
+      Select or enter your Google Account email to continue to Trading Zone password &amp; 2-step verification.
+    </p>
+    <div id="savedGoogleAccountsList" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <input id="googleModalEmailInput" class="input" type="email" autocomplete="email" placeholder="yourname@gmail.com" onkeydown="if(event.key==='Enter')confirmGoogleModalEmail()" />
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="confirmGoogleModalEmail()">Continue with Google →</button>
+      <button class="btn btn-outline" onclick="closeGoogleQuickSignInModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: ADMIN "SEEN BY" READ RECEIPT INSPECTOR -->
 <div id="seenByModal" class="modal-backdrop" onclick="if(event.target===this)closeSeenByModal()">
   <div class="modal-card">
@@ -1702,8 +1906,8 @@
   const DATABASE_ID = "ai-studio-android-tradingc-48996c14-8181-489f-8651-4b2951ae5d4c";
   const PRIMARY_ADMIN_EMAIL = "atharvagarg456@gmail.com";
 
-  // Zero-404 Instant Cloud URL + GitHub Pages URL + Android APK URL
-  const PERMANENT_APPLE_WEB_URL = "https://raw.githack.com/atharvagarg456-droid/Trading-Zone.in/main/docs/index.html";
+  // Unified Official Website URL + Android APK URL (Identical QR across Android & Web)
+  const PERMANENT_APPLE_WEB_URL = "https://atharvagarg456-droid.github.io/Trading-Zone.in/";
   const GITHUB_PAGES_WEB_URL = "https://atharvagarg456-droid.github.io/Trading-Zone.in/";
   const PERMANENT_ANDROID_APK_URL = "https://github.com/atharvagarg456-droid/Trading-Zone.in/raw/main/Trading-Zone.apk";
 
@@ -1976,13 +2180,22 @@
     }
   }
 
-  // Initialize Permanent QR codes (Zero-404 Cloud URL default)
+  // Initialize Official Website & APK QR codes
   renderQrIntoElement("settingsPermanentQrBox", PERMANENT_APPLE_WEB_URL, 5);
   renderQrIntoElement("modalQrBox", PERMANENT_APPLE_WEB_URL, 6);
   document.getElementById("modalQrUrlText").textContent = PERMANENT_APPLE_WEB_URL;
 
+  // Global startup listener for automatic Website Firmware Update even on the Login screen
+  onSnapshot(doc(db, "app_config", "pricing"), (snap) => {
+    if (snap.exists()) {
+      pricingConfig = { ...pricingConfig, ...snap.data() };
+      if (typeof checkAndAutoApplyWebFirmwareUpdate === "function") {
+        checkAndAutoApplyWebFirmwareUpdate();
+      }
+    }
+  });
+
   function getQrUrlForTarget(target) {
-    if (target === "pages") return GITHUB_PAGES_WEB_URL;
     if (target === "android") return PERMANENT_ANDROID_APK_URL;
     return PERMANENT_APPLE_WEB_URL;
   }
@@ -1997,7 +2210,6 @@
   window.switchModalQrTarget = function(target) {
     currentModalQrTarget = target;
     document.getElementById("qrTabApple")?.classList.toggle("selected", target === "apple");
-    document.getElementById("qrTabPages")?.classList.toggle("selected", target === "pages");
     document.getElementById("qrTabAndroid")?.classList.toggle("selected", target === "android");
     const url = getQrUrlForTarget(target);
     renderQrIntoElement("modalQrBox", url, 6);
@@ -2010,28 +2222,19 @@
     showToast("Link copied to clipboard!");
   };
   window.shareAppleWebsiteLink = async function() {
-    const text = `📈 Join Trading Zone on Apple iPhone, iPad & Web:\n\n🍏 Instant Zero-404 Apple Web App:\n${PERMANENT_APPLE_WEB_URL}\n\n🌐 GitHub Pages Mirror:\n${GITHUB_PAGES_WEB_URL}`;
+    const text = `📈 Join Trading Zone Official Website & App:\n\n🌐 Official Website (Windows, Mac, Chrome & Safari):\n${PERMANENT_APPLE_WEB_URL}\n\n🤖 Android App (APK Download):\n${PERMANENT_ANDROID_APK_URL}`;
     if (navigator.share) {
       try {
-        await navigator.share({ title: "Trading Zone — Apple Web App", text, url: PERMANENT_APPLE_WEB_URL });
+        await navigator.share({ title: "Trading Zone — Official Website", text, url: PERMANENT_APPLE_WEB_URL });
         return;
       } catch (_) {}
     }
     navigator.clipboard?.writeText(text);
     window.playWebSound("success");
-    showToast("Zero-404 Apple Website link copied!");
+    showToast("Official Website link copied!");
   };
   window.shareBothLinks = async function() {
-    const text = `📈 Trading Zone — Official App & Website Links\n\n🍏 Apple iPhone / iPad (Zero-404 Instant Link):\n${PERMANENT_APPLE_WEB_URL}\n\n🌐 GitHub Pages Link:\n${GITHUB_PAGES_WEB_URL}\n\n🤖 Android APK Download:\n${PERMANENT_ANDROID_APK_URL}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Trading Zone Links", text, url: PERMANENT_APPLE_WEB_URL });
-        return;
-      } catch (_) {}
-    }
-    navigator.clipboard?.writeText(text);
-    window.playWebSound("success");
-    showToast("Apple & Android links copied!");
+    return window.shareAppleWebsiteLink();
   };
 
   // Live Offline / No-Network Monitor + 1-Hour Offline Reminder Notification
@@ -2393,51 +2596,360 @@
     return sec.maxDevicesLimit > 0 ? sec.maxDevicesLimit : (parsePricingMeta().defaultMaxDevices || 2);
   }
 
-  // Google Sign-In + Mandatory Account Password / 2-Step Check
-  window.signInWithGoogle = async function() {
-    const provider = new GoogleAuthProvider();
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (err) {
-      const helper = document.getElementById("twoStepHelperText");
-      if (helper) {
-        helper.style.color = "var(--amber)";
-        helper.textContent = "⚡ Enter your Email below and sign in with your Password OR tap 'Send 4-Digit Code to Logged-In Device':";
-      }
-      const card = document.getElementById("twoStepAuthCard");
-      if (card) {
-        card.style.borderColor = "var(--emerald)";
-        card.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-      document.getElementById("iosDirectEmailInput")?.focus();
-      showToast("Enter your Email below to continue!");
+  // --- GOOGLE-STYLE 3-STEP PROGRESSIVE LOGIN & CREATE ACCOUNT + UNIVERSAL GOOGLE SIGN-IN ---
+  let webAuthMode = "signin"; // 'signin' | 'signup'
+  let webAuthCurrentStep = 1; // 1 = Email, 2 = Password, 3 = 2-Step Verification
+  let matchedExistingUserForStep = null;
+
+  function updateProgressiveAuthStepUI() {
+    const tabSignIn = document.getElementById("authModeSignInTab");
+    const tabSignUp = document.getElementById("authModeSignUpTab");
+    if (tabSignIn) tabSignIn.classList.toggle("selected", webAuthMode === "signin");
+    if (tabSignUp) tabSignUp.classList.toggle("selected", webAuthMode === "signup");
+
+    const dot1 = document.getElementById("authStepDot1");
+    const dot2 = document.getElementById("authStepDot2");
+    const dot3 = document.getElementById("authStepDot3");
+    if (dot1) {
+      dot1.className = "step-dot " + (webAuthCurrentStep === 1 ? "active" : "done");
     }
+    if (dot2) {
+      dot2.className = "step-dot " + (webAuthCurrentStep === 2 ? "active" : (webAuthCurrentStep > 2 ? "done" : ""));
+    }
+    if (dot3) {
+      dot3.className = "step-dot " + (webAuthCurrentStep === 3 ? "active" : "");
+    }
+
+    const box1 = document.getElementById("authStep1Box");
+    const box2 = document.getElementById("authStep2Box");
+    const box3 = document.getElementById("authStep3Box");
+    if (box1) box1.style.display = webAuthCurrentStep === 1 ? "flex" : "none";
+    if (box2) box2.style.display = webAuthCurrentStep === 2 ? "flex" : "none";
+    if (box3) box3.style.display = webAuthCurrentStep === 3 ? "flex" : "none";
+
+    const headline = document.getElementById("authMainHeadline");
+    const subtitle = document.getElementById("authMainSubtitle");
+    const footerSwitch = document.getElementById("authSwitchModeFooterBtn");
+    const emailVal = (document.getElementById("iosDirectEmailInput")?.value || "").trim().toLowerCase();
+
+    const pill2 = document.getElementById("authStep2EmailPillText");
+    const pill3 = document.getElementById("authStep3EmailPillText");
+    if (pill2) pill2.textContent = emailVal;
+    if (pill3) pill3.textContent = emailVal;
+
+    if (webAuthCurrentStep === 1) {
+      if (headline) headline.textContent = webAuthMode === "signup" ? "Create your Trading Zone Account" : "Sign in to Trading Zone";
+      if (subtitle) subtitle.textContent = "Step 1 of 3 • Enter your Email Address or continue with Google";
+      if (footerSwitch) {
+        footerSwitch.textContent = webAuthMode === "signup"
+          ? "Already have an account? Sign In"
+          : "Don't have an account? Create New Account";
+      }
+    } else if (webAuthCurrentStep === 2) {
+      const isCreating = webAuthMode === "signup" || !matchedExistingUserForStep;
+      if (headline) headline.textContent = isCreating ? "Create Account Password" : "Welcome";
+      if (subtitle) subtitle.textContent = isCreating
+        ? "Step 2 of 3 • Choose a strong password (at least 6 characters)"
+        : "Step 2 of 3 • Enter your Account Password to continue";
+      const passLabel = document.getElementById("authStep2PasswordLabel");
+      const confirmWrap = document.getElementById("authStep2ConfirmWrap");
+      const quickOtpBtn = document.getElementById("step2QuickOtpBtn");
+      if (passLabel) passLabel.textContent = isCreating ? "Create Account Password (min 6 chars)" : "Enter your Account Password";
+      if (confirmWrap) confirmWrap.style.display = isCreating ? "block" : "none";
+      if (quickOtpBtn) quickOtpBtn.style.display = isCreating ? "none" : "inline-flex";
+    } else if (webAuthCurrentStep === 3) {
+      const isCreating = webAuthMode === "signup" || !matchedExistingUserForStep;
+      if (headline) headline.textContent = "2-Step Verification";
+      if (subtitle) subtitle.textContent = isCreating
+        ? "Step 3 of 3 • Create a 4–8 digit Step 2 PIN (or leave blank to skip)"
+        : "Step 3 of 3 • Enter the 4-digit code sent to your device or your Step 2 PIN";
+      const pinLabel = document.getElementById("authStep3PinLabel");
+      const resendBtn = document.getElementById("step3ResendOtpBtn");
+      if (pinLabel) pinLabel.textContent = isCreating ? "Create 4–8 Digit Step 2 PIN (Optional)" : "4-Digit Device Code or Step 2 PIN";
+      if (resendBtn) resendBtn.style.display = isCreating ? "none" : "inline-flex";
+    }
+  }
+
+  window.setWebAuthMode = function(mode) {
+    webAuthMode = mode === "signup" ? "signup" : "signin";
+    webAuthCurrentStep = 1;
+    updateProgressiveAuthStepUI();
   };
 
-  // Send 4-Digit Quick Login Code from Email Login screen (#gateAuth) to user's already logged-in device
-  window.sendQuickEmailLoginOtp = async function() {
-    const emailInput = document.getElementById("iosDirectEmailInput")?.value.trim().toLowerCase() || "";
+  window.toggleWebAuthMode = function() {
+    window.setWebAuthMode(webAuthMode === "signin" ? "signup" : "signin");
+  };
+
+  window.goToAuthStep1 = function() {
+    webAuthCurrentStep = 1;
+    updateProgressiveAuthStepUI();
+    setTimeout(() => document.getElementById("iosDirectEmailInput")?.focus(), 60);
+  };
+
+  window.goToAuthStep2 = function() {
+    webAuthCurrentStep = 2;
+    updateProgressiveAuthStepUI();
+    setTimeout(() => document.getElementById("iosDirectPasswordInput")?.focus(), 60);
+  };
+
+  window.toggleAuthPasswordShow = function() {
+    const inp = document.getElementById("iosDirectPasswordInput");
+    const btn = document.getElementById("authShowPassBtn");
+    if (!inp) return;
+    const isPass = inp.type === "password";
+    inp.type = isPass ? "text" : "password";
+    if (btn) btn.textContent = isPass ? "Hide" : "Show";
+  };
+
+  // STEP 1 -> STEP 2: Validate Email & Look Up Account
+  window.submitAuthStep1Email = async function() {
+    const emailInput = (document.getElementById("iosDirectEmailInput")?.value || "").trim().toLowerCase();
     if (!emailInput || !emailInput.includes("@") || !emailInput.includes(".")) {
       window.playWebSound("alert");
-      showToast("Enter your Email Address first to send a 4-digit code to your logged-in device");
+      showToast("Please enter a valid email address");
       document.getElementById("iosDirectEmailInput")?.focus();
       return;
     }
+
+    // Save email to recent Google/Web accounts list for convenience
+    try {
+      const savedEmails = JSON.parse(localStorage.getItem("tz_recent_emails") || "[]");
+      if (!savedEmails.includes(emailInput)) {
+        savedEmails.unshift(emailInput);
+        localStorage.setItem("tz_recent_emails", JSON.stringify(savedEmails.slice(0, 5)));
+      }
+    } catch (_) {}
+
+    matchedExistingUserForStep = null;
     try {
       const usersSnap = await getDocs(collection(db, "users"));
-      let existingUserDoc = null;
       usersSnap.forEach(d => {
         const data = d.data();
         if (String(data.email || "").trim().toLowerCase() === emailInput) {
-          existingUserDoc = { id: d.id, ...data };
+          matchedExistingUserForStep = { id: d.id, ...data };
         }
       });
-      if (!existingUserDoc) {
-        window.playWebSound("alert");
-        showToast("New account: Please enter a Password (min 6 chars) to register your account first.");
-        document.getElementById("iosDirectPasswordInput")?.focus();
+    } catch (_) {}
+
+    if (matchedExistingUserForStep && webAuthMode === "signup") {
+      webAuthMode = "signin";
+      showToast("Account found! Enter your password to sign in.");
+    } else if (!matchedExistingUserForStep && webAuthMode === "signin") {
+      const isEmailAdmin = emailInput === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
+        (adminSettings.adminEmails || []).some(e => String(e).toLowerCase() === emailInput);
+      if (!isEmailAdmin) {
+        webAuthMode = "signup";
+        showToast("New email detected — let's create your account password!");
+      }
+    }
+
+    webAuthCurrentStep = 2;
+    updateProgressiveAuthStepUI();
+    window.playWebSound("tap");
+    setTimeout(() => document.getElementById("iosDirectPasswordInput")?.focus(), 80);
+  };
+
+  // STEP 2 -> STEP 3: Validate Password, then transition to Step 3 (Two-Step Verification)
+  window.submitAuthStep2Password = async function() {
+    const emailInput = (document.getElementById("iosDirectEmailInput")?.value || "").trim().toLowerCase();
+    const passwordInput = (document.getElementById("iosDirectPasswordInput")?.value || "").trim();
+    const confirmInput = (document.getElementById("iosDirectConfirmPasswordInput")?.value || "").trim();
+
+    if (passwordInput.length < 6) {
+      window.playWebSound("alert");
+      showToast("Password must be at least 6 characters");
+      document.getElementById("iosDirectPasswordInput")?.focus();
+      return;
+    }
+
+    const isCreating = webAuthMode === "signup" || !matchedExistingUserForStep;
+    const isEmailAdmin = emailInput === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
+      (adminSettings.adminEmails || []).some(e => String(e).toLowerCase() === emailInput);
+
+    if (isCreating && !isEmailAdmin && confirmInput && confirmInput !== passwordInput) {
+      window.playWebSound("alert");
+      showToast("Passwords do not match!");
+      document.getElementById("iosDirectConfirmPasswordInput")?.focus();
+      return;
+    }
+
+    if (matchedExistingUserForStep) {
+      const parsedSec = extractSecurityMeta(matchedExistingUserForStep.securityQuestion);
+      const storedPass = parsedSec.password;
+      const storedAnswer = String(matchedExistingUserForStep.securityAnswer || "").trim();
+      const localPass = localStorage.getItem("tz_pass_" + matchedExistingUserForStep.id) || "";
+      const effectivePass = storedPass || localPass;
+
+      if (effectivePass) {
+        if (passwordInput !== effectivePass && passwordInput.toLowerCase() !== storedAnswer.toLowerCase()) {
+          window.playWebSound("alert");
+          showToast("🚫 Incorrect password! Try again or tap 'Send 4-Digit Code to Logged-In Device'.");
+          return;
+        }
+      } else if (storedAnswer) {
+        if (passwordInput.toLowerCase() !== storedAnswer.toLowerCase()) {
+          window.playWebSound("alert");
+          showToast("🚫 Incorrect password!");
+          return;
+        }
+      }
+
+      // Password verified! Check if 2-Step Verification is enabled or if user wants Step 3 verification
+      const uid = matchedExistingUserForStep.userId || matchedExistingUserForStep.id;
+      localStorage.setItem("tz_pass_" + uid, passwordInput);
+
+      if (parsedSec.twoStepEnabled || matchedExistingUserForStep.appLockPin) {
+        webAuthCurrentStep = 3;
+        updateProgressiveAuthStepUI();
+        // Automatically send 4-digit code to logged-in device for Step 3 convenience
+        window.sendQuickEmailLoginOtp(true);
+        setTimeout(() => document.getElementById("iosDirectPinInput")?.focus(), 80);
         return;
       }
+
+      // If 2FA is not required for this member, complete login directly!
+      await completeVerifiedEmailLogin(matchedExistingUserForStep);
+      return;
+    }
+
+    // New Account or First-Time Admin Web Setup -> Advance to Step 3 (2-Step PIN setup)
+    webAuthCurrentStep = 3;
+    updateProgressiveAuthStepUI();
+    window.playWebSound("tap");
+    setTimeout(() => document.getElementById("iosDirectPinInput")?.focus(), 80);
+  };
+
+  // STEP 3: Verify 2-Step Code / PIN and Complete Sign-In or Account Creation
+  window.submitAuthStep3TwoFactor = async function() {
+    const emailInput = (document.getElementById("iosDirectEmailInput")?.value || "").trim().toLowerCase();
+    const passwordInput = (document.getElementById("iosDirectPasswordInput")?.value || "").trim();
+    const pinInput = (document.getElementById("iosDirectPinInput")?.value || "").trim();
+
+    if (matchedExistingUserForStep) {
+      const uid = matchedExistingUserForStep.userId || matchedExistingUserForStep.id;
+      const storedPin = String(matchedExistingUserForStep.appLockPin || localStorage.getItem("tz_pin_" + uid) || "").trim();
+
+      if (pendingQuickAuthCode && pinInput === pendingQuickAuthCode) {
+        await completeVerifiedEmailLogin(matchedExistingUserForStep);
+        return;
+      }
+      if (storedPin && pinInput === storedPin) {
+        localStorage.setItem("tz_pin_" + uid, pinInput);
+        await completeVerifiedEmailLogin(matchedExistingUserForStep);
+        return;
+      }
+      if (!storedPin && pinInput.length >= 4) {
+        localStorage.setItem("tz_pin_" + uid, pinInput);
+        await completeVerifiedEmailLogin(matchedExistingUserForStep);
+        return;
+      }
+      window.playWebSound("alert");
+      showToast("🚫 Invalid 4-Digit Code or Step 2 PIN! Check your logged-in device or enter your saved PIN.");
+      return;
+    }
+
+    // Creating a new account (or initializing Admin profile)
+    await window.signInIosDirectEmail();
+  };
+
+  // Universal Google Sign-In (Works via Firebase Popup OR Built-in Google Account Selector Modal on restricted domains)
+  window.signInWithGoogle = async function() {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    try {
+      const result = await signInWithPopup(auth, provider);
+      if (result && result.user && result.user.email) {
+        const gEmail = result.user.email.trim().toLowerCase();
+        const emailEl = document.getElementById("iosDirectEmailInput");
+        if (emailEl) emailEl.value = gEmail;
+        showToast("✅ Google Account verified: " + gEmail);
+        return;
+      }
+    } catch (err) {
+      // Open seamless Google Account Picker Modal when hosted on GitHub Pages / preview / Safari popup guard
+      openGoogleQuickSignInModal();
+    }
+  };
+
+  window.openGoogleQuickSignInModal = function() {
+    const modal = document.getElementById("googleQuickSignInModal");
+    const listEl = document.getElementById("savedGoogleAccountsList");
+    const inputEl = document.getElementById("googleModalEmailInput");
+    let savedEmails = [];
+    try {
+      savedEmails = JSON.parse(localStorage.getItem("tz_recent_emails") || "[]");
+    } catch (_) {}
+    if (listEl) {
+      if (savedEmails.length > 0) {
+        listEl.innerHTML = savedEmails.map(em => `
+          <button type="button" class="btn btn-outline" style="justify-content:flex-start;padding:10px 14px;" onclick="selectSavedGoogleEmail('${escapeHtml(em)}')">
+            <span>👤</span>
+            <span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(em)}</span>
+            <span style="color:var(--emerald);font-size:11px;">Continue →</span>
+          </button>
+        `).join("");
+      } else {
+        listEl.innerHTML = "";
+      }
+    }
+    if (inputEl) {
+      inputEl.value = document.getElementById("iosDirectEmailInput")?.value || "";
+    }
+    if (modal) modal.classList.add("open");
+    setTimeout(() => inputEl?.focus(), 80);
+  };
+
+  window.closeGoogleQuickSignInModal = function() {
+    document.getElementById("googleQuickSignInModal")?.classList.remove("open");
+  };
+
+  window.selectSavedGoogleEmail = function(email) {
+    const inputEl = document.getElementById("googleModalEmailInput");
+    if (inputEl) inputEl.value = email;
+    window.confirmGoogleModalEmail();
+  };
+
+  window.confirmGoogleModalEmail = async function() {
+    const gEmail = (document.getElementById("googleModalEmailInput")?.value || "").trim().toLowerCase();
+    if (!gEmail || !gEmail.includes("@") || !gEmail.includes(".")) {
+      window.playWebSound("alert");
+      showToast("Enter a valid Google email address");
+      return;
+    }
+    closeGoogleQuickSignInModal();
+    const emailEl = document.getElementById("iosDirectEmailInput");
+    if (emailEl) emailEl.value = gEmail;
+    await window.submitAuthStep1Email();
+  };
+
+  // Send 4-Digit Quick Login Code to user's already logged-in device
+  window.sendQuickEmailLoginOtp = async function(silentStepTransition = false) {
+    const emailInput = document.getElementById("iosDirectEmailInput")?.value.trim().toLowerCase() || "";
+    if (!emailInput || !emailInput.includes("@") || !emailInput.includes(".")) {
+      window.playWebSound("alert");
+      showToast("Enter your Email Address first");
+      goToAuthStep1();
+      return;
+    }
+    try {
+      let existingUserDoc = matchedExistingUserForStep;
+      if (!existingUserDoc) {
+        const usersSnap = await getDocs(collection(db, "users"));
+        usersSnap.forEach(d => {
+          const data = d.data();
+          if (String(data.email || "").trim().toLowerCase() === emailInput) {
+            existingUserDoc = { id: d.id, ...data };
+          }
+        });
+      }
+      if (!existingUserDoc) {
+        if (!silentStepTransition) {
+          window.playWebSound("alert");
+          showToast("New account: Please create a password first.");
+        }
+        return;
+      }
+      matchedExistingUserForStep = existingUserDoc;
       const uid = existingUserDoc.userId || existingUserDoc.id;
       const code4 = String(Math.floor(1000 + Math.random() * 9000));
       pendingQuickAuthEmailDoc = existingUserDoc;
@@ -2468,16 +2980,18 @@
         updatedAt: serverTimestamp()
       });
 
+      webAuthCurrentStep = 3;
+      updateProgressiveAuthStepUI();
+
       const statusBox = document.getElementById("authQuickOtpStatusBox");
       if (statusBox) {
         statusBox.style.display = "block";
-        statusBox.innerHTML = `📲 <strong>4-Digit Code Sent to Your Logged-In Device!</strong><br/>Check the top banner on your logged-in phone/browser, then either tap <strong>Approve Login</strong> there OR enter the 4-digit code in the box above and tap Sign In. (If your other device is unavailable, enter your Account Password above.)`;
+        statusBox.innerHTML = `📲 <strong>4-Digit Code Sent to Your Logged-In Device!</strong><br/>Check the top banner on your logged-in phone/browser, then either tap <strong>Approve Login</strong> there OR enter the 4-digit code below (or your Step 2 PIN).`;
       }
       document.getElementById("iosDirectPinInput")?.focus();
       window.playWebSound("success");
       showToast("📲 4-Digit Quick Login Code sent to your logged-in device!");
 
-      // Start temporary listener on access_requests so 1-tap approval on the other device signs in automatically!
       const unsubQuick = onSnapshot(collection(db, "access_requests"), async (snap) => {
         const reqs = [];
         snap.forEach(d => reqs.push({ id: d.id, ...d.data() }));
@@ -2492,7 +3006,7 @@
         }
       });
     } catch (e) {
-      showToast(e?.message || "Could not send 4-digit code");
+      if (!silentStepTransition) showToast(e?.message || "Could not send 4-digit code");
     }
   };
 
@@ -2511,90 +3025,34 @@
     isSessionUnlocked = true;
     pendingQuickAuthEmailDoc = null;
     pendingQuickAuthCode = "";
+    webAuthCurrentStep = 1;
+    updateProgressiveAuthStepUI();
     await registerOrTouchCurrentDevice(uid);
     startRealtimeListeners(verifiedUser);
     evaluateNavigationGates();
     window.playWebSound("success");
-    showToast("✅ Quick Login Verified for " + (existingUserDoc.fullName || emailInput));
+    showToast("✅ Signed in as " + (existingUserDoc.fullName || emailInput));
   }
 
-  // INSTAGRAM-STYLE EMAIL + PASSWORD OR 4-DIGIT DEVICE CODE LOGIN
+  // Final Account Creation / Direct Sign-In Handler
   window.signInIosDirectEmail = async function() {
     const emailInput = document.getElementById("iosDirectEmailInput")?.value.trim().toLowerCase() || "";
     const passwordInput = document.getElementById("iosDirectPasswordInput")?.value.trim() || "";
     const pinInput = document.getElementById("iosDirectPinInput")?.value.trim() || "";
 
     if (!emailInput || !emailInput.includes("@") || !emailInput.includes(".")) {
-      window.playWebSound("alert");
-      showToast("Enter a valid Email Address");
-      document.getElementById("iosDirectEmailInput")?.focus();
+      goToAuthStep1();
       return;
     }
-
-    // Check if user entered the 4-digit cross-device OTP code in #iosDirectPinInput (or #iosDirectPasswordInput)
-    if (pendingQuickAuthEmailDoc && pendingQuickAuthCode &&
-        String(pendingQuickAuthEmailDoc.email || "").trim().toLowerCase() === emailInput &&
-        (pinInput === pendingQuickAuthCode || passwordInput === pendingQuickAuthCode)) {
-      await completeVerifiedEmailLogin(pendingQuickAuthEmailDoc);
-      return;
-    }
-
     if (passwordInput.length < 6) {
-      window.playWebSound("alert");
-      showToast("Enter your Account Password (min 6 chars) OR tap 'Send 4-Digit Code to Logged-In Device'");
-      document.getElementById("iosDirectPasswordInput")?.focus();
+      goToAuthStep2();
       return;
     }
-
-    showToast("Verifying Account Credentials with Trading Zone Cloud...");
 
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
-      let existingUserDoc = null;
-      usersSnap.forEach(d => {
-        const data = d.data();
-        if (String(data.email || "").trim().toLowerCase() === emailInput) {
-          existingUserDoc = { id: d.id, ...data };
-        }
-      });
-
       const isEmailAdmin = emailInput === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
         (adminSettings.adminEmails || []).some(e => String(e).toLowerCase() === emailInput);
 
-      if (existingUserDoc) {
-        const parsedSec = extractSecurityMeta(existingUserDoc.securityQuestion);
-        const storedPass = parsedSec.password;
-        const storedAnswer = String(existingUserDoc.securityAnswer || "").trim();
-        const storedPin = String(existingUserDoc.appLockPin || "").trim();
-
-        const localPass = localStorage.getItem("tz_pass_" + existingUserDoc.id) || "";
-        const localPin = localStorage.getItem("tz_pin_" + existingUserDoc.id) || "";
-
-        // 1. Verify Account / Security Password
-        const effectivePass = storedPass || localPass;
-        if (effectivePass) {
-          if (passwordInput !== effectivePass && passwordInput.toLowerCase() !== storedAnswer.toLowerCase()) {
-            window.playWebSound("alert");
-            showToast("🚫 Incorrect Account Password! (Or tap 'Send 4-Digit Code to Logged-In Device')");
-            return;
-          }
-        } else if (storedAnswer) {
-          if (passwordInput.toLowerCase() !== storedAnswer.toLowerCase()) {
-            window.playWebSound("alert");
-            showToast("🚫 Incorrect Account Password!");
-            return;
-          }
-        }
-
-        // Note: Since user provided valid Account Password, allow quick login (if 2FA PIN is also provided, save it)
-        const uid = existingUserDoc.userId || existingUserDoc.id;
-        localStorage.setItem("tz_pass_" + uid, passwordInput);
-        if (pinInput) localStorage.setItem("tz_pin_" + uid, pinInput);
-        await completeVerifiedEmailLogin(existingUserDoc);
-        return;
-      }
-
-      // NEW / UNREGISTERED EMAIL ACCOUNT:
       const uid = "tz_" + btoa(emailInput).replace(/[^a-zA-Z0-9]/g, "").substring(0, 20);
       localStorage.setItem("tz_pass_" + uid, passwordInput);
       if (pinInput) localStorage.setItem("tz_pin_" + uid, pinInput);
@@ -2607,6 +3065,8 @@
       localStorage.setItem("tz_ios_direct_user", JSON.stringify(newUser));
       currentUser = newUser;
       isSessionUnlocked = true;
+      webAuthCurrentStep = 1;
+      updateProgressiveAuthStepUI();
 
       if (isEmailAdmin) {
         const encodedQ = encodeSecurityMeta(passwordInput, true, 5, "What is my favorite commodity or stock?");
@@ -2654,7 +3114,7 @@
         startRealtimeListeners(newUser);
         evaluateNavigationGates();
         window.playWebSound("success");
-        showToast("📝 Account Password saved! Complete your 1-Time Profile Registration below.");
+        showToast("📝 Account created! Complete your 1-Time Profile Registration below.");
       }
     } catch (err) {
       window.playWebSound("alert");
@@ -2745,10 +3205,12 @@
       evaluateNavigationGates();
     }));
 
-    // 2. Pricing config
+    // 2. Pricing config + Automatic Real-Time Website Firmware Update Sync
     unsubscribers.push(onSnapshot(doc(db, "app_config", "pricing"), (snap) => {
       if (snap.exists()) {
         pricingConfig = { ...pricingConfig, ...snap.data() };
+        checkAndAutoApplyWebFirmwareUpdate();
+        evaluateNavigationGates();
         renderPlansTab();
         renderCommodityStream();
         renderBroadcastStream();
@@ -3219,19 +3681,8 @@
       return;
     }
 
-    // Check Full-Screen Mandatory Firmware Update Gate pushed by Admin
-    const { firmwareConfig } = parsePricingMeta();
-    const requiredFwStamp = `${firmwareConfig.versionName}_${firmwareConfig.pushedAtMillis}`;
-    const installedFwStamp = localStorage.getItem("tz_installed_fw_stamp") || "";
-    if (!isUserAdmin() && firmwareConfig.enabled && firmwareConfig.mandatory && firmwareConfig.pushedAtMillis > 0 && installedFwStamp !== requiredFwStamp) {
-      document.getElementById("bottomNav").style.display = "none";
-      const fwTitle = document.getElementById("fwGateVersionTitle");
-      const fwNotes = document.getElementById("fwGateNotesText");
-      if (fwTitle) fwTitle.textContent = `Mandatory Firmware v${firmwareConfig.versionName} Available`;
-      if (fwNotes) fwNotes.textContent = firmwareConfig.releaseNotes || "Admin has pushed a mandatory firmware update to all devices and browsers. Tap below to install and sync immediately.";
-      showScreen("gateFirmwareUpdate");
-      return;
-    }
+    // Automatic Website Firmware Update Sync (Auto-applies & refreshes when Admin triggers update)
+    checkAndAutoApplyWebFirmwareUpdate();
 
     // Approved or Verified Admin -> Show main workspace
     document.getElementById("bottomNav").style.display = "flex";
@@ -3283,18 +3734,36 @@
     }
   };
 
-  window.installMandatoryWebFirmwareNow = function() {
+  let isAutoUpdatingFirmware = false;
+  function checkAndAutoApplyWebFirmwareUpdate() {
     const { firmwareConfig } = parsePricingMeta();
-    const stamp = `${firmwareConfig.versionName}_${firmwareConfig.pushedAtMillis}`;
-    const prog = document.getElementById("fwGateProgressBox");
-    if (prog) prog.style.display = "block";
+    if (!firmwareConfig.enabled || !firmwareConfig.pushedAtMillis) return;
+    const requiredFwStamp = `${firmwareConfig.versionName}_${firmwareConfig.pushedAtMillis}`;
+    const installedFwStamp = localStorage.getItem("tz_installed_fw_stamp") || "";
+    if (installedFwStamp === requiredFwStamp || isAutoUpdatingFirmware) return;
+
+    isAutoUpdatingFirmware = true;
+    localStorage.setItem("tz_installed_fw_stamp", requiredFwStamp);
     window.playWebSound("TARGET HIT");
+    showToast(`⚡ Admin Triggered Update (v${firmwareConfig.versionName}) — Auto-Updating Website...`);
+
+    if ("caches" in window) {
+      caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+    }
     setTimeout(() => {
-      localStorage.setItem("tz_installed_fw_stamp", stamp);
-      if (prog) prog.style.display = "none";
-      showToast(`✅ Firmware v${firmwareConfig.versionName} Installed & Synced!`);
-      evaluateNavigationGates();
-    }, 950);
+      isAutoUpdatingFirmware = false;
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("fw", firmwareConfig.versionName);
+        window.location.replace(url.toString());
+      } catch (_) {
+        window.location.reload();
+      }
+    }, 1200);
+  }
+
+  window.installMandatoryWebFirmwareNow = function() {
+    checkAndAutoApplyWebFirmwareUpdate();
   };
 
   // 2-Step 4-Digit Quick Device Code OR Security Password Fallback Gate Submit
