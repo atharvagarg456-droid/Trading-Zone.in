@@ -50,12 +50,18 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.local.DeviceTelemetry
+import com.example.data.local.MarketInstrumentQuote
 import com.example.data.local.NetworkMonitor
 import com.example.data.local.SecurityPreferences
 import com.example.data.model.AppThemePreference
 import com.example.data.model.BroadcastMessage
+import com.example.data.model.ChatBubbleStylePreference
+import com.example.data.model.FontScalePreference
 import com.example.data.repository.TradingRepository
 import com.example.service.TradingBackgroundService
+import com.example.ui.components.AdminMarketSearchAndPinDialog
+import com.example.ui.components.LiveMarketDetailDialog
+import com.example.ui.components.LiveMarketTopTickerStrip
 import com.example.ui.components.MandatoryFirmwareUpdateScreen
 import com.example.ui.components.NotificationHelper
 import com.example.ui.components.PermanentQrAndShareCard
@@ -124,6 +130,7 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             var themePref by remember { mutableStateOf(securityPrefs.getThemePreference()) }
+            var fontScalePref by remember { mutableStateOf(securityPrefs.getFontScalePreference()) }
             val isNetworkConnected by remember {
                 NetworkMonitor.observeNetworkConnectivity(appContext)
             }.collectAsStateWithLifecycle(initialValue = NetworkMonitor.isCurrentlyConnected(appContext))
@@ -161,7 +168,10 @@ class MainActivity : FragmentActivity() {
 
             var showStartupSplash by remember { mutableStateOf(true) }
 
-            TradingTheme(themePreference = themePref) {
+            TradingTheme(
+                themePreference = themePref,
+                fontScaleFactor = fontScalePref.scaleFactor
+            ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val activeUser = currentUser
                     if (activeUser == null) {
@@ -226,6 +236,9 @@ class MainActivity : FragmentActivity() {
                                 securityPrefs.setThemePreference(newTheme)
                                 themePref = newTheme
                             },
+                            onFontScaleChanged = { newScale ->
+                                fontScalePref = newScale
+                            },
                             onSignedOut = {
                                 TradingBackgroundService.stop(appContext)
                                 currentUser = null
@@ -250,6 +263,7 @@ fun AuthenticatedTradingWorkspace(
     viewModel: TradingViewModel,
     themePreference: AppThemePreference,
     onChangeTheme: (AppThemePreference) -> Unit,
+    onFontScaleChanged: (FontScalePreference) -> Unit = {},
     onSignedOut: () -> Unit
 ) {
     val context = LocalContext.current
@@ -268,6 +282,12 @@ fun AuthenticatedTradingWorkspace(
     val highRiskVibrationEnabled by viewModel.highRiskVibrationEnabled.collectAsStateWithLifecycle()
     val compactFeedMode by viewModel.compactFeedMode.collectAsStateWithLifecycle()
     val largeTextMode by viewModel.largeTextMode.collectAsStateWithLifecycle()
+    val fontScalePreference by viewModel.fontScalePreference.collectAsStateWithLifecycle()
+    val chatBubbleStylePreference by viewModel.chatBubbleStylePreference.collectAsStateWithLifecycle()
+    val showLiveMarketTicker by viewModel.showLiveMarketTicker.collectAsStateWithLifecycle()
+    val autoScrollFeedEnabled by viewModel.autoScrollFeedEnabled.collectAsStateWithLifecycle()
+    val defaultLandingTab by viewModel.defaultLandingTab.collectAsStateWithLifecycle()
+    val liveMarketQuotes by viewModel.liveMarketQuotes.collectAsStateWithLifecycle()
     val localSecurityQuestion by viewModel.localSecurityQuestion.collectAsStateWithLifecycle()
     val appleWebAppUrl by viewModel.appleWebAppUrl.collectAsStateWithLifecycle()
     val androidApkShareUrl by viewModel.androidApkShareUrl.collectAsStateWithLifecycle()
@@ -295,11 +315,20 @@ fun AuthenticatedTradingWorkspace(
     val screenshotWarningMessage by viewModel.screenshotWarningMessage.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
 
-    var selectedTab by remember { mutableStateOf(MainNavTab.STREAM) }
+    var selectedTab by remember {
+        val initialTab = when (defaultLandingTab) {
+            "COMMODITY" -> MainNavTab.COMMODITY
+            "MEMBERSHIP" -> MainNavTab.MEMBERSHIP
+            else -> MainNavTab.STREAM
+        }
+        mutableStateOf(initialTab)
+    }
     var editingMessage by remember { mutableStateOf<BroadcastMessage?>(null) }
     var replyingToMessage by remember { mutableStateOf<BroadcastMessage?>(null) }
     var showQuickQrShareDialog by remember { mutableStateOf(false) }
     var showTelegramQuickDrawer by remember { mutableStateOf(false) }
+    var showAdminMarketSearchDialog by remember { mutableStateOf(false) }
+    var selectedMarketQuoteForDetail by remember { mutableStateOf<MarketInstrumentQuote?>(null) }
 
     val totalPendingAdminApprovals = remember(isAdmin, allUsersForAdmin, allAccessRequestsForAdmin, moderationAlertsForAdmin) {
         if (!isAdmin) {
@@ -576,6 +605,16 @@ fun AuthenticatedTradingWorkspace(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 )
+
+                // Investing.com-Style Top Live Market Ticker Strip (Pinned instruments with real-time ticks)
+                if (showMainTabs && showLiveMarketTicker && liveMarketQuotes.isNotEmpty()) {
+                    LiveMarketTopTickerStrip(
+                        quotes = liveMarketQuotes,
+                        isAdmin = isAdmin,
+                        onSelectQuote = { selectedMarketQuoteForDetail = it },
+                        onOpenAdminSearchDialog = { showAdminMarketSearchDialog = true }
+                    )
+                }
 
                 // Prominent Animated Offline / No-Network Banner across the screen
                 Box(modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -890,6 +929,10 @@ fun AuthenticatedTradingWorkspace(
                                     onDeleteMessageRequest = { msgId ->
                                         viewModel.deleteMessage(msgId)
                                     },
+                                    chatBubbleStyle = chatBubbleStylePreference,
+                                    liveMarketQuotes = liveMarketQuotes,
+                                    onOpenAdminMarketSearch = { showAdminMarketSearchDialog = true },
+                                    onSelectMarketQuote = { selectedMarketQuoteForDetail = it },
                                     onQuickPublishBroadcast = { title, content, targetTier, signalType, photoBase64 ->
                                         val encodedLinkTitle = BroadcastMessage.encodeLinkTitleWithMeta(
                                             plainLinkTitle = "",
@@ -953,6 +996,14 @@ fun AuthenticatedTradingWorkspace(
                                     },
                                     onApplyDailyMessageLimit = { newLimit ->
                                         viewModel.applyDailyMessageLimitNow(newLimit)
+                                    },
+                                    chatBubbleStyle = chatBubbleStylePreference,
+                                    compactFeedMode = compactFeedMode,
+                                    liveMarketQuotes = liveMarketQuotes,
+                                    onOpenAdminMarketSearch = { showAdminMarketSearchDialog = true },
+                                    onSelectMarketQuote = { selectedMarketQuoteForDetail = it },
+                                    onUpdateCommodityModerationRules = { slowSec, blockLinks, customWords ->
+                                        viewModel.updateCommodityModerationRules(slowSec, blockLinks, customWords)
                                     }
                                 )
                             }
@@ -1044,6 +1095,27 @@ fun AuthenticatedTradingWorkspace(
                                     },
                                     onRequestProfileEdit = { name, phone, city, photo ->
                                         viewModel.requestProfileEdit(name, phone, city, photo)
+                                    },
+                                    fontScalePreference = fontScalePreference,
+                                    chatBubbleStylePreference = chatBubbleStylePreference,
+                                    showLiveMarketTicker = showLiveMarketTicker,
+                                    autoScrollFeedEnabled = autoScrollFeedEnabled,
+                                    defaultLandingTab = defaultLandingTab,
+                                    pricingConfig = pricingConfig,
+                                    onChangeFontScale = { newScale ->
+                                        viewModel.setFontScalePreference(newScale)
+                                        onFontScaleChanged(newScale)
+                                    },
+                                    onChangeChatBubbleStyle = { newStyle ->
+                                        viewModel.setChatBubbleStylePreference(newStyle)
+                                    },
+                                    onToggleShowLiveMarketTicker = { viewModel.setShowLiveMarketTicker(it) },
+                                    onToggleAutoScrollFeed = { viewModel.setAutoScrollFeedEnabled(it) },
+                                    onChangeDefaultLandingTab = { viewModel.setDefaultLandingTab(it) },
+                                    onOpenAdminMarketSearch = { showAdminMarketSearchDialog = true },
+                                    onUpdateAnnouncementTicker = { viewModel.updateAnnouncementTicker(it) },
+                                    onUpdateCommodityModerationRules = { slowSec, blockLinks, customWords ->
+                                        viewModel.updateCommodityModerationRules(slowSec, blockLinks, customWords)
                                     },
                                     onLockNow = { viewModel.lockSessionNow() },
                                     onSignOut = signOutAction
@@ -1224,13 +1296,66 @@ fun AuthenticatedTradingWorkspace(
 
                     HorizontalDivider()
 
-                    // 2. Display, Sound & Notification Customization
+                    // 2. Font Scale & Card Style Customization
                     Text(
-                        text = "⚡ Display, Sound & Haptics",
+                        text = "🔤 Font Scale & Card Shape",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color(0xFF10B981)
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FontScalePreference.entries.forEach { scaleOpt ->
+                            FilterChip(
+                                selected = fontScalePreference == scaleOpt,
+                                onClick = {
+                                    com.example.util.SoundAndHapticFeedback.playTap(context)
+                                    viewModel.setFontScalePreference(scaleOpt)
+                                    onFontScaleChanged(scaleOpt)
+                                },
+                                label = { Text(scaleOpt.title, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        ChatBubbleStylePreference.entries.forEach { styleOpt ->
+                            FilterChip(
+                                selected = chatBubbleStylePreference == styleOpt,
+                                onClick = {
+                                    com.example.util.SoundAndHapticFeedback.playTap(context)
+                                    viewModel.setChatBubbleStylePreference(styleOpt)
+                                },
+                                label = { Text(styleOpt.title, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    // 3. Display, Live Ticker, Sound & Notification Customization
+                    Text(
+                        text = "⚡ Display, Live Market Ticker & Haptics",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF10B981)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Show Top Live Market Ticker", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Switch(checked = showLiveMarketTicker, onCheckedChange = { viewModel.setShowLiveMarketTicker(it) })
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1264,15 +1389,32 @@ fun AuthenticatedTradingWorkspace(
                         Switch(checked = notificationsEnabled, onCheckedChange = { viewModel.setNotificationsPreference(it) })
                     }
 
-                    // 3. Admin Quick Tools (Room Lock, Daily Msg Limit, Approvals, Write Broadcast)
+                    // 4. Admin Quick Tools (Search & Pin Live Market, Room Lock, Daily Msg Limit, Slow-Mode, Approvals)
                     if (isAdmin) {
                         HorizontalDivider()
                         Text(
-                            text = "👑 Admin Quick Controls",
+                            text = "👑 Admin Quick Controls & Live Market",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFFF59E0B)
                         )
+                        Button(
+                            onClick = {
+                                com.example.util.SoundAndHapticFeedback.playTap(context)
+                                showTelegramQuickDrawer = false
+                                showAdminMarketSearchDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981),
+                                contentColor = Color.Black
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("📈 Search & Pin Live Market (Gold, Nifty...)", fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1312,6 +1454,34 @@ fun AuthenticatedTradingWorkspace(
                             }
                         }
 
+                        val modCfg = pricingConfig.commodityModerationConfig()
+                        Text(
+                            text = "Commodity Slow-Mode Cooldown:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(0 to "Off", 10 to "10s", 30 to "30s", 60 to "60s").forEach { (sec, label) ->
+                                FilterChip(
+                                    selected = modCfg.slowModeSeconds == sec,
+                                    onClick = {
+                                        com.example.util.SoundAndHapticFeedback.playTap(context)
+                                        viewModel.updateCommodityModerationRules(
+                                            slowModeSeconds = sec,
+                                            blockExternalLinks = modCfg.blockExternalLinks,
+                                            customBlockedWordsCsv = modCfg.customBlockedWordsCsv
+                                        )
+                                    },
+                                    label = { Text(label, maxLines = 1, softWrap = false) }
+                                )
+                            }
+                        }
+
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = {
@@ -1339,7 +1509,7 @@ fun AuthenticatedTradingWorkspace(
 
                     HorizontalDivider()
 
-                    // 4. Simplified 2-Button Share (Website & Android App)
+                    // 5. Simplified 2-Button Share (Website & Android App)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
@@ -1365,6 +1535,58 @@ fun AuthenticatedTradingWorkspace(
                 }
             },
             modifier = Modifier.testTag("telegram_quick_customization_drawer")
+        )
+    }
+
+    // Investing.com-Style Admin Market Search & Pin Modal
+    if (showAdminMarketSearchDialog && isAdmin) {
+        AdminMarketSearchAndPinDialog(
+            allQuotes = liveMarketQuotes,
+            onTogglePinSymbol = { symbolId, pin ->
+                viewModel.togglePinnedMarketSymbol(symbolId, pin)
+            },
+            onSetCustomPriceOverride = { symbolId, price ->
+                viewModel.setCustomMarketBenchmarkOverride(symbolId, price)
+            },
+            onSelectQuoteForDetail = { quote ->
+                selectedMarketQuoteForDetail = quote
+            },
+            onDismiss = { showAdminMarketSearchDialog = false }
+        )
+    }
+
+    // Investing.com-Style Live Market Instrument Detail Dialog
+    selectedMarketQuoteForDetail?.let { quote ->
+        LiveMarketDetailDialog(
+            quote = quote,
+            isAdmin = isAdmin,
+            onTogglePin = {
+                viewModel.togglePinnedMarketSymbol(quote.symbolId, !quote.isPinned)
+                selectedMarketQuoteForDetail = quote.copy(isPinned = !quote.isPinned)
+            },
+            onAdminQuickBroadcastQuote = { title, content, signalType ->
+                val encodedLinkTitle = BroadcastMessage.encodeLinkTitleWithMeta(
+                    plainLinkTitle = "",
+                    targetTier = "ALL",
+                    signalType = signalType
+                )
+                viewModel.publishMessage(
+                    title = title,
+                    content = content,
+                    category = quote.category,
+                    riskLevel = "MEDIUM",
+                    markedPhotoBase64 = "",
+                    linkUrl = "",
+                    linkTitle = encodedLinkTitle,
+                    isPinned = false,
+                    replyToMessageId = "",
+                    replyToTitle = "",
+                    replyToSnippet = "",
+                    replyToRiskLevel = ""
+                )
+                selectedMarketQuoteForDetail = null
+            },
+            onDismiss = { selectedMarketQuoteForDetail = null }
         )
     }
 

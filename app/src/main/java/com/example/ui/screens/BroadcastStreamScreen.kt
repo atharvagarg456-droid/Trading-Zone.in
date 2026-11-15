@@ -85,12 +85,15 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import com.example.data.local.MarketInstrumentQuote
 import com.example.data.model.BroadcastMessage
+import com.example.data.model.ChatBubbleStylePreference
 import com.example.data.model.DeviceRecord
 import com.example.data.model.MessageReadReceipt
 import com.example.data.model.PricingConfig
 import com.example.data.model.UserProfile
 import com.example.ui.components.ImageCodecHelper
+import com.example.ui.components.LiveMarketWatchboardCard
 import com.example.ui.components.SwipeableGalleryItem
 import com.example.ui.components.SwipeablePhotoAndProfileDialog
 import com.example.ui.components.toSwipeableGalleryItem
@@ -174,6 +177,10 @@ fun BroadcastStreamScreen(
     onReplyToMessageRequest: (BroadcastMessage) -> Unit = {},
     onEditMessageRequest: (BroadcastMessage) -> Unit,
     onDeleteMessageRequest: (String) -> Unit,
+    chatBubbleStyle: ChatBubbleStylePreference = ChatBubbleStylePreference.MODERN_GLASS,
+    liveMarketQuotes: List<MarketInstrumentQuote> = emptyList(),
+    onOpenAdminMarketSearch: () -> Unit = {},
+    onSelectMarketQuote: (MarketInstrumentQuote) -> Unit = {},
     onQuickPublishBroadcast: (
         title: String,
         content: String,
@@ -468,6 +475,18 @@ fun BroadcastStreamScreen(
                     }
                 }
 
+                // Investing.com-Style Live Market Desk & Watchboard (With Admin Search & Pin)
+                if (liveMarketQuotes.isNotEmpty()) {
+                    item(key = "broadcast_live_market_desk") {
+                        LiveMarketWatchboardCard(
+                            quotes = liveMarketQuotes,
+                            isAdmin = isAdmin,
+                            onOpenAdminSearchDialog = onOpenAdminMarketSearch,
+                            onSelectQuote = onSelectMarketQuote
+                        )
+                    }
+                }
+
                 if (messages.isEmpty()) {
                     item {
                         Card(
@@ -506,6 +525,7 @@ fun BroadcastStreamScreen(
                                 isEligibleForTier = isEligibleForTier,
                                 seenByCount = messageReceipts.size,
                                 largeTextMode = largeTextMode,
+                                chatBubbleStyle = chatBubbleStyle,
                                 isAdmin = isAdmin,
                                 targetId = msgTargetId,
                                 reactions = emojiReactionsByTarget[msgTargetId].orEmpty(),
@@ -637,6 +657,39 @@ private fun QuickBroadcastComposeDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                Text(
+                    text = "⚡ 1-Tap Broadcast Quick Templates",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF10B981)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        Triple("🟢 BUY CALL", "BUY", "BUY MCX GOLD @ CMP") to "Entry: CMP\nStop Loss: Strict Intraday SL\nTarget 1: +250 pts\nTarget 2: +480 pts",
+                        Triple("🔴 SELL CALL", "SELL", "SELL MCX SILVER @ CMP") to "Entry: CMP\nStop Loss: Strict Intraday SL\nTarget 1: -450 pts\nTarget 2: -900 pts",
+                        Triple("🎯 TARGET 1 HIT", "TARGET HIT", "🎯 TARGET 1 ACHIEVED — BOOK 50%") to "First target achieved cleanly as per our broadcast call! Book 50% profit and trail Stop Loss to cost.",
+                        Triple("🔥 FULL TARGET HIT", "TARGET HIT", "🔥 ALL TARGETS ACHIEVED — FULL PROFIT") to "Boom! All intraday targets achieved with high precision. Lock in full profits now!",
+                        Triple("🛡️ TRAIL SL TO COST", "AUTO", "🛡️ RISK UPDATE — TRAIL STOP LOSS TO COST") to "Trade is moving strongly in our favor. Trail your Stop Loss to Entry Cost for a zero-risk trade."
+                    ).forEach { (meta, bodyTemplate) ->
+                        val (chipLabel, sigType, titleTemplate) = meta
+                        FilterChip(
+                            selected = title == titleTemplate,
+                            onClick = {
+                                SoundAndHapticFeedback.playTap(context)
+                                title = titleTemplate
+                                content = bodyTemplate
+                                selectedSignal = sigType
+                            },
+                            label = { Text(chipLabel, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -766,6 +819,7 @@ private fun BroadcastMessageCard(
     isEligibleForTier: Boolean,
     seenByCount: Int,
     largeTextMode: Boolean,
+    chatBubbleStyle: ChatBubbleStylePreference = ChatBubbleStylePreference.MODERN_GLASS,
     isAdmin: Boolean,
     targetId: String,
     reactions: Map<String, Int>,
@@ -796,21 +850,22 @@ private fun BroadcastMessageCard(
         val t = message.targetMembershipTier()
         t.isNotBlank() && !t.equals("ALL", ignoreCase = true)
     }
+    val cornerRadius = chatBubbleStyle.cornerDp.dp
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .then(
                 if (!isEligibleForTier) {
-                    Modifier.border(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+                    Modifier.border(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.65f), RoundedCornerShape(cornerRadius))
                 } else if (message.isPinned) {
-                    Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
+                    Modifier.border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(cornerRadius))
                 } else {
                     Modifier
                 }
             )
             .testTag("broadcast_card_${message.id}"),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(cornerRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {

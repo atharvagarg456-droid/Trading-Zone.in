@@ -52,6 +52,14 @@
       --emerald: #38BDF8;
       --emerald-dim: rgba(56, 189, 248, 0.16);
     }
+    body.theme-crimson {
+      --bg: #0D0507;
+      --surface: #1A0B0F;
+      --surface-elevated: #281117;
+      --border: #5C1D2B;
+      --emerald: #FF5252;
+      --emerald-dim: rgba(255, 82, 82, 0.16);
+    }
     body.light-mode {
       --bg: #F1F5F9;
       --surface: #FFFFFF;
@@ -61,6 +69,60 @@
       --muted: #475569;
       --emerald: #059669;
       --emerald-dim: rgba(5, 150, 105, 0.14);
+    }
+    body.bubble-sharp .card {
+      border-radius: 6px !important;
+    }
+    body.bubble-pill .card {
+      border-radius: 26px !important;
+    }
+    body.compact-cards .card {
+      padding: 11px 13px !important;
+    }
+    .live-market-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 8px 0 2px;
+      margin-top: 8px;
+      border-top: 1px solid rgba(148, 163, 184, 0.14);
+      scrollbar-width: none;
+    }
+    .live-market-strip::-webkit-scrollbar {
+      display: none;
+    }
+    .market-ticker-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: transform 0.14s ease, border-color 0.14s ease;
+    }
+    .market-ticker-chip:hover {
+      border-color: var(--emerald);
+      transform: translateY(-1px);
+    }
+    .market-quote-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: border-color 0.15s ease, transform 0.12s ease;
+    }
+    .market-quote-row:hover {
+      border-color: var(--emerald);
     }
     * {
       box-sizing: border-box;
@@ -913,6 +975,9 @@
       </div>
     </div>
 
+    <!-- Investing.com-Style Top Live Market Ticker Strip -->
+    <div id="webTopMarketTickerStrip" class="live-market-strip" style="display:none;"></div>
+
     <!-- Prominent No-Network Banner -->
     <div id="offlineBanner" class="offline-banner">
       <span style="font-size:22px;">📡</span>
@@ -1274,6 +1339,9 @@
       <!-- Live Announcement Ticker & Trade Signal P&L Banner on Broadcast Stream -->
       <div id="streamTopPnlBanner"></div>
 
+      <!-- Investing.com-Style Live Market Watchboard on Broadcast Stream -->
+      <div id="streamLiveMarketDeskContainer"></div>
+
       <!-- Free Trial Banner if eligible -->
       <div id="trialBannerCard" class="card" style="display:none;border-color:var(--emerald);">
         <div class="card-title">🎁 Claim Your 1-Time 7-Day Free Trial</div>
@@ -1291,14 +1359,14 @@
       </button>
     </section>
 
-    <!-- MAIN TAB 2: COMMODITY SECTION (SEARCH, TOPIC FILTER, MODAL COMPOSER, TRADE SIGNAL P&L BANNER + REACTIONS) -->
+    <!-- MAIN TAB 2: COMMODITY SECTION (SEARCH, TOPIC FILTER, DIRECT 1-TAP POSTING, LIVE MARKET DESK + REACTIONS) -->
     <section id="tabCommodity" class="screen">
-      <!-- Compact Search, Topic Filter & Quick Post Trigger -->
+      <!-- Compact Search, Topic Filter & Direct Post Trigger -->
       <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
           <div>
             <div class="card-title" style="margin-bottom:1px;">Commodity Desk &amp; Trade Room</div>
-            <div class="card-sub" id="commodityQuotaSubtitle">Synced live • Sent messages are permanent</div>
+            <div class="card-sub" id="commodityQuotaSubtitle">Synced live • Topic auto-detected automatically</div>
           </div>
           <span class="pill pill-emerald" id="commodityOnlineBadge">1 Active</span>
         </div>
@@ -1318,15 +1386,16 @@
         </div>
       </div>
 
-      <!-- Collapsible Inline Admin Room Open/Lock & Daily Message Limit Bar -->
+      <!-- Collapsible Inline Admin Room Open/Lock, Live Market Pin, Slow-Mode & Daily Message Limit Bar -->
       <details id="commodityAdminInlineBar" class="pro-accordion" style="display:none;border-color:rgba(16,185,129,0.45);background:rgba(16,185,129,0.08);">
-        <summary>🛡️ Admin Commodity Controls (Lock Room, Daily Limit &amp; Trade P&amp;L)</summary>
+        <summary>🛡️ Admin Commodity Controls (Lock Room, Live Market Pin, Slow-Mode &amp; Limits)</summary>
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
             <div style="font-weight:800;font-size:13px;" id="inlineCommodityRoomStateTitle">Commodity Room: OPEN</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn btn-primary" id="inlineCommodityToggleRoomBtn" style="width:auto;padding:7px 12px;font-size:12px;" onclick="toggleInlineCommodityRoomLock()">🔒 Lock Room</button>
-              <button class="btn btn-outline" style="width:auto;padding:7px 12px;font-size:12px;" onclick="openAdminPnlPrompt()">📈 Post P&amp;L</button>
+              <button class="btn btn-primary" style="width:auto;padding:7px 12px;font-size:12px;" onclick="openAdminMarketSearchModal()">📈 Search &amp; Pin Market</button>
+              <button class="btn btn-outline" style="width:auto;padding:7px 12px;font-size:12px;" onclick="openAdminPnlPrompt()">🎯 Post P&amp;L</button>
             </div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-top:8px;border-top:1px solid var(--border);">
@@ -1340,18 +1409,42 @@
               <button class="btn btn-primary" style="width:auto;padding:6px 12px;font-size:12px;" onclick="applyInlineCommodityLimit()">✓ Apply</button>
             </div>
           </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-top:8px;border-top:1px solid var(--border);">
+            <span style="font-size:12px;font-weight:800;">Slow-Mode Cooldown &amp; Link Filter:</span>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <button class="chip" id="slowChip0" onclick="updateWebModerationRules(0, null, null)">Off</button>
+              <button class="chip" id="slowChip10" onclick="updateWebModerationRules(10, null, null)">10s</button>
+              <button class="chip" id="slowChip30" onclick="updateWebModerationRules(30, null, null)">30s</button>
+              <button class="chip" id="slowChip60" onclick="updateWebModerationRules(60, null, null)">60s</button>
+              <button class="chip" id="blockLinksChipBtn" onclick="toggleWebBlockExternalLinks()">🔗 Block Links</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input id="adminCustomBlockedWordsInput" class="input" placeholder="Custom blocked words (comma separated)" style="flex:1;" />
+            <button class="btn btn-primary" style="width:auto;padding:8px 14px;font-size:12px;" onclick="saveWebCustomBlockedWords()">Save Rules</button>
+          </div>
         </div>
       </details>
+
+      <!-- Investing.com-Style Live Market Watchboard in Commodity Tab -->
+      <div id="commodityLiveMarketDeskContainer"></div>
 
       <!-- Pinned Top Banner: Trade Signal Profit / Loss (As Per Broadcast Call) with Telegram Emoji Reactions -->
       <div id="commodityTodayPnlBanner"></div>
 
       <div id="commodityList" style="display:flex;flex-direction:column;gap:12px;"></div>
 
-      <!-- Floating New Commodity Post Button (Always reachable, never pushed off-screen) -->
-      <button id="webCommodityComposeFab" onclick="openCommodityComposerModal()" style="display:none;position:fixed;right:20px;bottom:84px;z-index:90;background:linear-gradient(135deg,#00E676,#10B981);color:#04120B;border:none;border-radius:999px;padding:13px 20px;font-weight:900;font-size:14px;box-shadow:0 10px 28px rgba(0,230,118,0.4);cursor:pointer;align-items:center;gap:8px;">
-        <span>✏️</span><span>New Post</span>
-      </button>
+      <!-- Pinned WhatsApp-Style Direct 1-Tap Post Bar (Zero Manual Topic Selection Needed!) -->
+      <div id="commodityDirectBottomBar" class="card" style="padding:10px 12px;border-color:rgba(0,230,118,0.45);position:sticky;bottom:76px;z-index:35;background:rgba(12,20,36,0.96);backdrop-filter:blur(14px);">
+        <div id="commodityDirectAutoTagRow" style="display:none;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;">
+          <span style="color:var(--emerald);font-weight:800;" id="commodityDirectAutoTagBadge">⚡ Auto-Tag: Gold / Silver</span>
+          <span style="color:var(--muted);" id="commodityDirectQuotaHint">Direct Post</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="commodityDirectBottomInput" class="input" placeholder="Write direct message (auto-tagged by your words)..." oninput="onDirectBottomCommodityInput(this.value)" onkeydown="if(event.key==='Enter')submitDirectBottomCommodityPost()" style="flex:1;" />
+          <button class="btn btn-primary" style="width:auto;padding:11px 18px;white-space:nowrap;" onclick="submitDirectBottomCommodityPost()">🚀 Send</button>
+        </div>
+      </div>
     </section>
 
     <!-- MAIN TAB 3: MULTI-PLAN QR MEMBERSHIP (ADMIN BYPASS + INTERACTIVE PLAN STUDIO) -->
@@ -1514,12 +1607,43 @@
           </div>
           <input type="checkbox" id="prefExpiryNotif" checked onchange="saveNotifPrefs()" />
         </div>
-        <div class="switch-row" style="border-bottom:none;">
+        <div class="switch-row">
           <div>
             <div style="font-size:13px;font-weight:700;">Look-Changer UI Skin</div>
-            <div class="card-sub">Cycle across 5 institutional terminal themes</div>
+            <div class="card-sub">Cycle across 6 institutional terminal themes</div>
           </div>
           <button class="btn btn-outline" style="width:auto;padding:6px 12px;" onclick="toggleThemeMode()">Switch Theme</button>
+        </div>
+        <div class="switch-row">
+          <div>
+            <div style="font-size:13px;font-weight:700;">Show Top Live Market Ticker Strip</div>
+            <div class="card-sub">Real-time Gold, Silver, Nifty &amp; Crude ticker bar at top of screen</div>
+          </div>
+          <input type="checkbox" id="prefShowLiveTicker" checked onchange="toggleWebLiveTickerPref(this.checked)" />
+        </div>
+        <div class="switch-row">
+          <div>
+            <div style="font-size:13px;font-weight:700;">Compact Message Cards</div>
+            <div class="card-sub">High-density terminal card spacing</div>
+          </div>
+          <input type="checkbox" id="prefCompactCards" onchange="toggleWebCompactCardsPref(this.checked)" />
+        </div>
+        <div style="padding-top:10px;">
+          <div style="font-size:12px;font-weight:800;color:var(--emerald);margin-bottom:6px;">🔤 Font Scale (90% – 130%)</div>
+          <div class="chip-row">
+            <button class="chip" onclick="applyWebFontScale(0.92)">Small (90%)</button>
+            <button class="chip selected" onclick="applyWebFontScale(1.0)">Normal (100%)</button>
+            <button class="chip" onclick="applyWebFontScale(1.12)">Large (115%)</button>
+            <button class="chip" onclick="applyWebFontScale(1.24)">Extra Large (130%)</button>
+          </div>
+        </div>
+        <div style="padding-top:10px;">
+          <div style="font-size:12px;font-weight:800;color:var(--emerald);margin-bottom:6px;">💬 Card &amp; Bubble Corner Style</div>
+          <div class="chip-row">
+            <button class="chip selected" onclick="applyWebBubbleStyle('glass')">Modern Glass</button>
+            <button class="chip" onclick="applyWebBubbleStyle('sharp')">Sharp Terminal</button>
+            <button class="chip" onclick="applyWebBubbleStyle('pill')">Minimal Pill</button>
+          </div>
         </div>
       </div>
 
@@ -1733,17 +1857,38 @@
 
     <!-- 1. Look-Changer Themes -->
     <div style="padding:10px;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:8px;">
-      <div style="font-weight:800;font-size:13px;">🎨 Instant UI Theme Customization</div>
+      <div style="font-weight:800;font-size:13px;">🎨 Instant UI Theme Skins</div>
       <div class="chip-row">
-        <button class="chip" onclick="applyLookThemeByIndex(0)">Midnight Gold</button>
-        <button class="chip" onclick="applyLookThemeByIndex(1)">Cyber Emerald</button>
-        <button class="chip" onclick="applyLookThemeByIndex(2)">Royal Purple</button>
+        <button class="chip" onclick="applyLookThemeByIndex(0)">Obsidian Gold</button>
+        <button class="chip" onclick="applyLookThemeByIndex(1)">Cyber Matrix</button>
+        <button class="chip" onclick="applyLookThemeByIndex(2)">Royal Bullion</button>
         <button class="chip" onclick="applyLookThemeByIndex(3)">Ocean Sapphire</button>
         <button class="chip" onclick="applyLookThemeByIndex(4)">Crimson Pro</button>
+        <button class="chip" onclick="applyLookThemeByIndex(5)">Daylight Desk</button>
       </div>
     </div>
 
-    <!-- 2. Sound & Haptic Vibration Controls -->
+    <!-- 2. Font Scale, Card Shape & Live Ticker Customization -->
+    <div style="padding:10px;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:8px;">
+      <div style="font-weight:800;font-size:13px;">🔤 Font Scale &amp; Card Style</div>
+      <div class="chip-row">
+        <button class="chip" onclick="applyWebFontScale(0.92)">Small 90%</button>
+        <button class="chip" onclick="applyWebFontScale(1.0)">Normal 100%</button>
+        <button class="chip" onclick="applyWebFontScale(1.12)">Large 115%</button>
+        <button class="chip" onclick="applyWebFontScale(1.24)">XL 130%</button>
+      </div>
+      <div class="chip-row">
+        <button class="chip" onclick="applyWebBubbleStyle('glass')">Modern Glass</button>
+        <button class="chip" onclick="applyWebBubbleStyle('sharp')">Sharp Terminal</button>
+        <button class="chip" onclick="applyWebBubbleStyle('pill')">Minimal Pill</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;font-weight:700;">Show Top Live Market Ticker</span>
+        <input type="checkbox" id="quickHubLiveTickerToggle" checked onchange="toggleWebLiveTickerPref(this.checked)" />
+      </div>
+    </div>
+
+    <!-- 3. Sound & Haptic Vibration Controls -->
     <div style="padding:10px;border:1px solid var(--border);border-radius:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
       <div>
         <div style="font-weight:800;font-size:13px;">🔊 Trade Signal Sound &amp; Haptics</div>
@@ -1752,7 +1897,7 @@
       <button class="btn btn-primary" style="width:auto;padding:7px 14px;" onclick="toggleWebSoundPref()">Toggle Sound</button>
     </div>
 
-    <!-- 3. Simplified 2-Button Share (Website + Android APK) -->
+    <!-- 4. Simplified 2-Button Share (Website + Android APK) -->
     <div style="padding:10px;border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;gap:8px;">
       <div style="font-weight:800;font-size:13px;">🌐 Quick Share (Website &amp; Android APK)</div>
       <div class="btn-row">
@@ -1761,11 +1906,14 @@
       </div>
     </div>
 
-    <!-- 4. Admin Direct Quick Controls (Shown when Admin is logged in) -->
+    <!-- 5. Admin Direct Quick Controls (Shown when Admin is logged in) -->
     <div id="telegramHubAdminSection" style="display:none;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--emerald);border-radius:12px;background:rgba(16,185,129,0.08);">
-      <div style="font-weight:900;font-size:13px;color:var(--emerald);">🛡️ ADMIN DIRECT CUSTOMIZATION &amp; TOOLS</div>
+      <div style="font-weight:900;font-size:13px;color:var(--emerald);">🛡️ ADMIN DIRECT CUSTOMIZATION &amp; LIVE MARKET</div>
+      <button class="btn btn-primary" onclick="closeTelegramQuickHub();openAdminMarketSearchModal();">
+        📈 Search &amp; Pin Live Market Instruments (Gold, Nifty, Crude...)
+      </button>
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="closeTelegramQuickHub();openQuickBroadcastComposeModal();">✏️ Write Broadcast Message</button>
+        <button class="btn btn-outline" onclick="closeTelegramQuickHub();openQuickBroadcastComposeModal();">✏️ Write Broadcast</button>
         <button class="btn btn-outline" onclick="closeTelegramQuickHub();jumpToAdminApprovals();">🔔 Pending Approvals</button>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -1782,13 +1930,22 @@
           <button class="chip" onclick="selectInlineCommodityLimit(10);applyInlineCommodityLimit();">10</button>
         </div>
       </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+        <span style="font-size:12px;font-weight:800;">Slow-Mode Cooldown:</span>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <button class="chip" onclick="updateWebModerationRules(0, null, null)">Off</button>
+          <button class="chip" onclick="updateWebModerationRules(10, null, null)">10s</button>
+          <button class="chip" onclick="updateWebModerationRules(30, null, null)">30s</button>
+          <button class="chip" onclick="updateWebModerationRules(60, null, null)">60s</button>
+        </div>
+      </div>
     </div>
 
     <button class="btn btn-outline" onclick="closeTelegramQuickHub()">Close</button>
   </div>
 </div>
 
-<!-- MODAL: WHATSAPP-STYLE QUICK BROADCAST COMPOSER (DIRECT FROM MESSAGES TAB) -->
+<!-- MODAL: WHATSAPP-STYLE QUICK BROADCAST COMPOSER (WITH 1-TAP QUICK TEMPLATES) -->
 <div id="quickBroadcastComposeModal" class="modal-backdrop" onclick="if(event.target===this)closeQuickBroadcastComposeModal()">
   <div class="modal-card" style="max-height:90vh;overflow-y:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -1797,6 +1954,14 @@
         <div class="card-title" style="margin-top:4px;">Send Trade Broadcast Message</div>
       </div>
       <button class="icon-btn" onclick="closeQuickBroadcastComposeModal()">✕</button>
+    </div>
+    <div style="font-size:12px;font-weight:800;color:var(--emerald);">⚡ 1-Tap Broadcast Quick Templates:</div>
+    <div class="chip-row">
+      <button type="button" class="chip" onclick="applyWebQuickBcTemplate('BUY', 'BUY MCX GOLD @ CMP', 'Entry: CMP\nStop Loss: Strict Intraday SL\nTarget 1: +250 pts\nTarget 2: +480 pts')">🟢 BUY CALL</button>
+      <button type="button" class="chip" onclick="applyWebQuickBcTemplate('SELL', 'SELL MCX SILVER @ CMP', 'Entry: CMP\nStop Loss: Strict Intraday SL\nTarget 1: -450 pts\nTarget 2: -900 pts')">🔴 SELL CALL</button>
+      <button type="button" class="chip" onclick="applyWebQuickBcTemplate('TARGET HIT', '🎯 TARGET 1 ACHIEVED — BOOK 50%', 'First target achieved cleanly as per our broadcast call! Book 50% profit and trail Stop Loss to cost.')">🎯 TARGET 1 HIT</button>
+      <button type="button" class="chip" onclick="applyWebQuickBcTemplate('TARGET HIT', '🔥 ALL TARGETS ACHIEVED — FULL PROFIT', 'Boom! All intraday targets achieved with high precision. Lock in full profits now!')">🔥 FULL TARGET HIT</button>
+      <button type="button" class="chip" onclick="applyWebQuickBcTemplate('BUY', '🛡️ RISK UPDATE — TRAIL STOP LOSS TO COST', 'Trade is moving strongly in our favor. Trail your Stop Loss to Entry Cost for a zero-risk trade.')">🛡️ TRAIL SL TO COST</button>
     </div>
     <input id="quickBcTitleInput" class="input" placeholder="Broadcast Headline (e.g., BUY GOLD 72400 TGT 72950)" />
     <div style="font-size:12px;font-weight:800;color:var(--muted);">Signal Vibration &amp; Alert Type:</div>
@@ -1821,33 +1986,50 @@
   </div>
 </div>
 
-<!-- MODAL: KEYBOARD-SAFE COMMODITY POST COMPOSER (TOPIC TAG & SEND NEVER PUSHED OFF-SCREEN) -->
+<!-- MODAL: DIRECT 1-STEP COMMODITY POST COMPOSER (ZERO CONFUSING TOPIC SELECTION FOR USERS!) -->
 <div id="commodityComposerModal" class="modal-backdrop" onclick="if(event.target===this)closeCommodityComposerModal()">
   <div class="modal-card" id="commodityComposerCard" style="max-height:90vh;overflow-y:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
       <div>
-        <span class="pill pill-emerald">💬 NEW COMMODITY POST</span>
-        <div class="card-title" style="margin-top:4px;">Post to Commodity Stream</div>
+        <span class="pill pill-emerald">💬 DIRECT COMMODITY POST</span>
+        <div class="card-title" style="margin-top:4px;">Post Directly to Commodity</div>
       </div>
       <button class="icon-btn" onclick="closeCommodityComposerModal()">✕</button>
     </div>
-    <div style="font-size:12px;color:var(--muted);">
-      Once sent, <strong>normal users cannot delete messages</strong>. Phone numbers &amp; emails are blocked automatically.
+    <div style="padding:9px 12px;border-radius:10px;background:rgba(0,230,118,0.12);border:1px solid rgba(0,230,118,0.4);display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:12px;color:var(--muted);font-weight:700;">⚡ Auto-Assigned Topic:</span>
+      <span style="font-size:12px;color:var(--emerald);font-weight:900;" id="commodityModalAutoTopicLabel">Trade Setup</span>
     </div>
-    <div style="font-size:12px;font-weight:800;color:var(--emerald);">Choose Topic Tag:</div>
-    <div class="chip-row" id="commodityModalTagChips" style="margin:0;">
-      <button class="chip selected" onclick="selectCommodityTag('Gold / Silver', this)">Gold / Silver</button>
-      <button class="chip" onclick="selectCommodityTag('Crude / NatGas', this)">Crude / NatGas</button>
-      <button class="chip" onclick="selectCommodityTag('Nifty / BankNifty', this)">Nifty / BankNifty</button>
-      <button class="chip" onclick="selectCommodityTag('Risk Control', this)">Risk Control</button>
-      <button class="chip" onclick="selectCommodityTag('Trade Setup', this)">Trade Setup</button>
-    </div>
-    <textarea id="commodityInput" class="textarea" placeholder="Write your Commodity market view or analysis..."></textarea>
+    <textarea id="commodityInput" class="textarea" placeholder="Write your message directly and tap Post..." oninput="onModalCommodityInput(this.value)"></textarea>
     <div class="btn-row">
       <button class="btn btn-outline" onclick="closeCommodityComposerModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitCommodityPost()">🚀 Send to Commodity</button>
+      <button class="btn btn-primary" onclick="submitCommodityPost()">🚀 Post Directly</button>
     </div>
   </div>
+</div>
+
+<!-- MODAL: INVESTING.COM-STYLE ADMIN SEARCH & PIN LIVE MARKET -->
+<div id="adminMarketSearchPinModal" class="modal-backdrop" onclick="if(event.target===this)closeAdminMarketSearchModal()">
+  <div class="modal-card" style="max-width:520px;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div>
+        <span class="pill pill-emerald">📈 INVESTING.COM LIVE MARKET STUDIO</span>
+        <div class="card-title" style="margin-top:4px;">Search &amp; Pin Live Market Data</div>
+      </div>
+      <button class="icon-btn" onclick="closeAdminMarketSearchModal()">✕</button>
+    </div>
+    <p class="card-sub">
+      Search any Commodity, Index, Forex, or Crypto instrument below. Pin it so it streams live across all user devices, calibrate benchmark prices, or send a 1-tap BUY / SELL call.
+    </p>
+    <input id="adminMarketSearchQueryInput" class="input" placeholder="Search Gold, Silver, Nifty 50, Crude Oil, BankNifty, USD/INR..." oninput="renderAdminMarketSearchList()" />
+    <div id="adminMarketSearchResultsList" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;"></div>
+    <button class="btn btn-outline" onclick="closeAdminMarketSearchModal()">Done</button>
+  </div>
+</div>
+
+<!-- MODAL: LIVE MARKET INSTRUMENT DETAIL & 1-TAP ADMIN CALL -->
+<div id="liveMarketDetailModal" class="modal-backdrop" onclick="if(event.target===this)closeLiveMarketDetailModal()">
+  <div class="modal-card" id="liveMarketDetailModalBody" style="max-width:460px;"></div>
 </div>
 
 <!-- MODAL: ANTI-SCREENSHOT SECURITY WARNING (STRIKE 1 WARNING / STRIKE 2 24H AUTO-BAN) -->
@@ -2363,14 +2545,15 @@
     reader.readAsDataURL(file);
   };
 
-  const LOOK_THEMES = ["", "theme-cyber", "theme-gold", "theme-sapphire", "light-mode"];
-  const LOOK_THEME_NAMES = ["Obsidian Terminal", "Cyber Matrix", "Royal Bullion", "Wall Street Pro", "Daylight Desk"];
+  const LOOK_THEMES = ["", "theme-cyber", "theme-gold", "theme-sapphire", "theme-crimson", "light-mode"];
+  const LOOK_THEME_NAMES = ["Obsidian Terminal", "Cyber Matrix", "Royal Bullion", "Wall Street Pro", "Crimson Pro", "Daylight Desk"];
   let currentLookIdx = Number(localStorage.getItem("tz_look_idx") || 0) % LOOK_THEMES.length;
   function applyLookTheme(idx) {
+    if (typeof idx === "number") currentLookIdx = idx % LOOK_THEMES.length;
     LOOK_THEMES.forEach(cls => { if (cls) document.body.classList.remove(cls); });
-    const cls = LOOK_THEMES[idx];
+    const cls = LOOK_THEMES[currentLookIdx];
     if (cls) document.body.classList.add(cls);
-    localStorage.setItem("tz_look_idx", String(idx));
+    localStorage.setItem("tz_look_idx", String(currentLookIdx));
   }
   applyLookTheme(currentLookIdx);
 
@@ -2380,6 +2563,69 @@
     window.playWebSound("success");
     showToast("✨ Theme: " + LOOK_THEME_NAMES[currentLookIdx]);
   };
+
+  // User Customization Preferences (Font Scale, Card Style, Compact Mode, Live Market Ticker)
+  let showWebLiveTicker = localStorage.getItem("tz_show_live_ticker") !== "false";
+  window.applyWebFontScale = function(scaleFactor) {
+    const s = Number(scaleFactor || 1.0);
+    document.documentElement.style.fontSize = `${Math.round(s * 100)}%`;
+    localStorage.setItem("tz_font_scale", String(s));
+    showToast(`🔤 Font scale set to ${Math.round(s * 100)}%`);
+  };
+  const savedFontScale = parseFloat(localStorage.getItem("tz_font_scale") || "1.0");
+  if (savedFontScale && savedFontScale !== 1.0) {
+    document.documentElement.style.fontSize = `${Math.round(savedFontScale * 100)}%`;
+  }
+
+  window.applyWebBubbleStyle = function(styleKey) {
+    document.body.classList.remove("bubble-sharp", "bubble-pill");
+    if (styleKey === "sharp") document.body.classList.add("bubble-sharp");
+    else if (styleKey === "pill") document.body.classList.add("bubble-pill");
+    localStorage.setItem("tz_bubble_style", styleKey || "glass");
+    showToast("💬 Card corner style updated!");
+  };
+  const savedBubbleStyle = localStorage.getItem("tz_bubble_style") || "glass";
+  if (savedBubbleStyle === "sharp") document.body.classList.add("bubble-sharp");
+  else if (savedBubbleStyle === "pill") document.body.classList.add("bubble-pill");
+
+  window.toggleWebCompactCardsPref = function(enabled) {
+    document.body.classList.toggle("compact-cards", !!enabled);
+    localStorage.setItem("tz_compact_cards", enabled ? "true" : "false");
+  };
+  if (localStorage.getItem("tz_compact_cards") === "true") {
+    document.body.classList.add("compact-cards");
+  }
+
+  window.toggleWebLiveTickerPref = function(enabled) {
+    showWebLiveTicker = !!enabled;
+    localStorage.setItem("tz_show_live_ticker", showWebLiveTicker ? "true" : "false");
+    const chk1 = document.getElementById("prefShowLiveTicker");
+    const chk2 = document.getElementById("quickHubLiveTickerToggle");
+    if (chk1) chk1.checked = showWebLiveTicker;
+    if (chk2) chk2.checked = showWebLiveTicker;
+    if (typeof renderWebLiveMarketWidgets === "function") renderWebLiveMarketWidgets();
+  };
+
+  // Automatic Keyword-Based Topic Classifier (Matches Android AutoTopicClassifier)
+  function classifyCommodityTopic(messageText, activeFrontFilter) {
+    const lower = String(messageText || "").toLowerCase();
+    if (["gold", "silver", "xau", "xag", "bullion", "sona", "chandi", "mcx gold", "mcx silver"].some(k => lower.includes(k))) {
+      return "Gold / Silver";
+    }
+    if (["crude", "oil", "natgas", "natural gas", "wti", "brent", "energy", "copper", "zinc"].some(k => lower.includes(k))) {
+      return "Crude / NatGas";
+    }
+    if (["nifty", "banknifty", "bank nifty", "sensex", "finnifty", "index", "call", "put", "ce", "pe", "option"].some(k => lower.includes(k))) {
+      return "Nifty / BankNifty";
+    }
+    if (["sl", "stop loss", "stoploss", "risk", "hedge", "trail", "drawdown", "capital", "lot size"].some(k => lower.includes(k))) {
+      return "Risk Control";
+    }
+    if (activeFrontFilter && activeFrontFilter !== "All") {
+      return activeFrontFilter;
+    }
+    return "Trade Setup";
+  }
 
   const TELEGRAM_EMOJIS = ["🔥", "🚀", "💰", "💎", "👏", "❤️", "👍"];
 
@@ -2419,6 +2665,17 @@
       mandatory: true,
       pushedAtMillis: 0,
       releaseNotes: "Mandatory Ultra Pro Max Firmware Update"
+    };
+
+    let marketWatchConfig = {
+      pinnedSymbolsCsv: "GOLD_MCX,SILVER_MCX,CRUDE_MCX,NIFTY_50,BANK_NIFTY,NATGAS_MCX",
+      customOverridesCsv: ""
+    };
+
+    let moderationRules = {
+      slowModeSeconds: 0,
+      blockExternalLinks: true,
+      customBlockedWordsCsv: ""
     };
 
     lines.forEach((rawLine, idx) => {
@@ -2471,9 +2728,22 @@
             releaseNotes: p[4] || "Mandatory Ultra Pro Max Firmware Update"
           };
         }
+      } else if (t.startsWith("__META_MKT__:")) {
+        const p = t.substring("__META_MKT__:".length).split("|");
+        marketWatchConfig = {
+          pinnedSymbolsCsv: (p[0] || "GOLD_MCX,SILVER_MCX,CRUDE_MCX,NIFTY_50,BANK_NIFTY,NATGAS_MCX").trim(),
+          customOverridesCsv: (p[1] || "").trim()
+        };
+      } else if (t.startsWith("__META_RULES__:")) {
+        const p = t.substring("__META_RULES__:".length).split("|");
+        moderationRules = {
+          slowModeSeconds: Math.min(300, Math.max(0, parseInt(p[0] || "0", 10) || 0)),
+          blockExternalLinks: p[1] !== "0",
+          customBlockedWordsCsv: (p[2] || "").trim()
+        };
       }
     });
-    return { plan1Enabled, defaultMaxDevices, customPlans, todayProfit, announcement, firmwareConfig };
+    return { plan1Enabled, defaultMaxDevices, customPlans, todayProfit, announcement, firmwareConfig, marketWatchConfig, moderationRules };
   }
 
   function buildBenefitsWithUpdatedMeta(overrides = {}) {
@@ -2484,11 +2754,13 @@
     const tp = overrides.todayProfit !== undefined ? overrides.todayProfit : cur.todayProfit;
     const ann = overrides.announcement !== undefined ? overrides.announcement : cur.announcement;
     const fw = overrides.firmwareConfig !== undefined ? overrides.firmwareConfig : cur.firmwareConfig;
+    const mkt = overrides.marketWatchConfig !== undefined ? overrides.marketWatchConfig : cur.marketWatchConfig;
+    const rules = overrides.moderationRules !== undefined ? overrides.moderationRules : cur.moderationRules;
 
     const cleanBullets = getBenefitsLinesArray()
       .map(s => String(s || "").trim())
       .filter(s => s && !s.startsWith("__META_"))
-      .slice(0, 12)
+      .slice(0, 10)
       .map(s => s.substring(0, 280));
 
     const sanitize = (s, maxLen) => String(s || "").replace(/[|\n\r]/g, " ").trim().substring(0, maxLen);
@@ -2507,11 +2779,21 @@
       out.push(fwLine.substring(0, 295));
     }
 
+    if (mkt) {
+      const mktLine = `__META_MKT__:${sanitize(mkt.pinnedSymbolsCsv || "GOLD_MCX,SILVER_MCX,CRUDE_MCX,NIFTY_50,BANK_NIFTY", 160)}|${sanitize(mkt.customOverridesCsv || "", 115)}`;
+      out.push(mktLine.substring(0, 295));
+    }
+
+    if (rules) {
+      const rulesLine = `__META_RULES__:${Math.min(300, Math.max(0, Number(rules.slowModeSeconds || 0)))}|${rules.blockExternalLinks !== false ? "1" : "0"}|${sanitize(rules.customBlockedWordsCsv || "", 200)}`;
+      out.push(rulesLine.substring(0, 295));
+    }
+
     cPlans.slice(0, 8).forEach(p => {
       const line = `__META_PLAN__:${sanitize(p.id, 32)}|${sanitize(p.name, 45)}|${Number(p.priceInr || 0)}|${Number(p.validityDays || 30)}|${p.enabled ? "1" : "0"}|${p.qrOnlyMode ? "1" : "0"}|${sanitize(p.badgeText || "VIP PLAN", 24)}`;
       out.push(line.substring(0, 295));
     });
-    return out.slice(0, 28);
+    return out.slice(0, 25);
   }
 
   function getReactionsHtml(targetId) {
@@ -4324,20 +4606,43 @@
     selectedCommodityFilter = topic || "All";
     document.querySelectorAll("#commodityFilterChips .chip").forEach(c => c.classList.remove("selected"));
     if (btn) btn.classList.add("selected");
-    if (topic && topic !== "All") {
-      selectedCommodityTag = topic;
-      document.querySelectorAll("#commodityModalTagChips .chip").forEach(c => {
-        c.classList.toggle("selected", c.textContent.trim() === topic);
-      });
-    }
     renderCommodityStream();
   };
 
-  window.selectCommodityTag = function(tag, btn) {
-    selectedCommodityTag = tag;
-    document.querySelectorAll("#commodityModalTagChips .chip").forEach(c => c.classList.remove("selected"));
-    if (btn) btn.classList.add("selected");
+  window.onModalCommodityInput = function(val) {
+    const labelEl = document.getElementById("commodityModalAutoTopicLabel");
+    if (labelEl) {
+      labelEl.textContent = classifyCommodityTopic(val, selectedCommodityFilter);
+    }
   };
+
+  window.onDirectBottomCommodityInput = function(val) {
+    const row = document.getElementById("commodityDirectAutoTagRow");
+    const badge = document.getElementById("commodityDirectAutoTagBadge");
+    if (row && badge) {
+      const trimmed = String(val || "").trim();
+      row.style.display = trimmed ? "flex" : "none";
+      if (trimmed) {
+        badge.textContent = "⚡ Auto-Tag: " + classifyCommodityTopic(trimmed, selectedCommodityFilter);
+      }
+    }
+  };
+
+  window.submitDirectBottomCommodityPost = async function() {
+    const bottomInput = document.getElementById("commodityDirectBottomInput");
+    const text = (bottomInput?.value || "").trim();
+    if (!text) {
+      showToast("Write your message first");
+      return;
+    }
+    const modalInput = document.getElementById("commodityInput");
+    if (modalInput) modalInput.value = text;
+    await window.submitCommodityPost();
+    if (bottomInput) bottomInput.value = "";
+    window.onDirectBottomCommodityInput("");
+  };
+
+  let lastWebCommodityPostMillis = 0;
 
   function containsPersonalContactInfo(text) {
     const phoneRegex = /(?:\+?\d[\d\s\-().]{7,}\d)/;
@@ -4359,6 +4664,15 @@
       showToast("Commodity chat is currently paused by Admin.");
       return;
     }
+    const { moderationRules } = parsePricingMeta();
+    if (!isUserAdmin() && moderationRules.slowModeSeconds > 0) {
+      const elapsedSec = Math.floor((Date.now() - lastWebCommodityPostMillis) / 1000);
+      if (lastWebCommodityPostMillis > 0 && elapsedSec < moderationRules.slowModeSeconds) {
+        const waitSec = moderationRules.slowModeSeconds - elapsedSec;
+        showToast(`⏳ Slow-mode active: Please wait ${waitSec}s before sending another message.`);
+        return;
+      }
+    }
     const lim = Math.max(1, Number(pricingConfig.dailyReviewLimitPerUser || 2));
     const todayKey = new Date().toISOString().slice(0, 10);
     const usedToday = userProfile?.lastReviewDate === todayKey ? Number(userProfile?.dailyReviewCount || 0) : 0;
@@ -4368,15 +4682,15 @@
     }
 
     const inputEl = document.getElementById("commodityInput");
-    const text = (inputEl?.value || "").trim();
-    if (!text) {
+    const rawText = (inputEl?.value || "").trim();
+    if (!rawText) {
       showToast("Please enter your Commodity message first");
       return;
     }
 
     const activeAdmins = getBoundedAdmins();
 
-    if (!isUserAdmin() && containsPersonalContactInfo(text)) {
+    if (!isUserAdmin() && containsPersonalContactInfo(rawText)) {
       window.playWebSound("alert");
       try {
         await addDoc(collection(db, "moderation_alerts"), {
@@ -4388,7 +4702,7 @@
           deviceId,
           ipAddress: "Web-Client",
           tradeMessageTitle: "Commodity Discussion",
-          originalUneditedText: text.substring(0, 2000),
+          originalUneditedText: rawText.substring(0, 2000),
           blurredText: "[BLOCKED PERSONAL CONTACT INFO]",
           detectedWords: "Phone/Email/Personal ID",
           status: "OPEN",
@@ -4401,23 +4715,45 @@
       return;
     }
 
+    let cleanedText = rawText;
+    let hasBlurred = false;
+    if (moderationRules.blockExternalLinks && /(https?:\/\/\S+|www\.\S+|t\.me\/\S+)/i.test(cleanedText)) {
+      cleanedText = cleanedText.replace(/(https?:\/\/\S+|www\.\S+|t\.me\/\S+)/gi, "[link blocked]");
+      hasBlurred = true;
+    }
+    if (moderationRules.customBlockedWordsCsv) {
+      const customWords = moderationRules.customBlockedWordsCsv.split(",").map(w => w.trim()).filter(Boolean);
+      customWords.forEach(w => {
+        const esc = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp(`\\b${esc}\\b`, "gi");
+        if (re.test(cleanedText)) {
+          cleanedText = cleanedText.replace(re, "•".repeat(Math.max(3, w.length)));
+          hasBlurred = true;
+        }
+      });
+    }
+
+    const autoTopic = classifyCommodityTopic(rawText, selectedCommodityFilter);
+    const latestBc = broadcastMessages[0];
+
     try {
       await addDoc(collection(db, "community_reviews"), {
         userId: currentUser.uid,
         userName: (userProfile?.fullName || currentUser.email || "Member").substring(0, 120),
         userPhotoBase64: (userProfile?.photoBase64 || "").substring(0, 450000),
-        tradeMessageId: "commodity_general",
-        tradeMessageTitle: "Commodity Discussion",
-        tradeRiskLevel: "MEDIUM",
-        topicTag: (selectedCommodityTag || "Gold / Silver").substring(0, 80),
-        publicContent: text.substring(0, 2000),
+        tradeMessageId: (latestBc?.id || "commodity_general").substring(0, 128),
+        tradeMessageTitle: (latestBc?.title || "Live Market Discussion").substring(0, 200),
+        tradeRiskLevel: (latestBc?.riskLevel || "MEDIUM").substring(0, 40),
+        topicTag: autoTopic.substring(0, 80),
+        publicContent: cleanedText.substring(0, 2000),
         rating: 5,
-        hasBlurredWords: false,
+        hasBlurredWords: hasBlurred,
         isPinned: false,
         visibility: "VERIFIED_MEMBERS",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
+      lastWebCommodityPostMillis = Date.now();
       if (!isUserAdmin() && userProfile?.id) {
         try {
           await updateDoc(doc(db, "users", currentUser.uid), {
@@ -4430,7 +4766,7 @@
       if (inputEl) inputEl.value = "";
       closeCommodityComposerModal();
       window.playWebSound("success");
-      showToast("Commodity message posted!");
+      showToast(`✅ Posted to Commodity (${autoTopic})!`);
     } catch (err) {
       showToast(err?.message || "Could not post Commodity message");
     }
@@ -6044,6 +6380,453 @@
       handleWebScreenshotAttempt();
     }
   });
+
+  window.applyWebQuickBcTemplate = function(sig, titleText, bodyText) {
+    quickBcSelectedSignal = sig;
+    const tEl = document.getElementById("quickBcTitleInput");
+    const bEl = document.getElementById("quickBcBodyInput");
+    if (tEl) tEl.value = titleText;
+    if (bEl) bEl.value = bodyText;
+    window.playWebSound(sig);
+  };
+
+  // --- INVESTING.COM-STYLE LIVE MARKET ENGINE & ADMIN SEARCH / PIN STUDIO ---
+  const WEB_MARKET_CATALOG = [
+    { symbolKey: "GOLD_MCX", displayName: "Gold Futures (MCX)", shortLabel: "MCX GOLD", exchange: "MCX", category: "COMMODITY", unitPrefix: "₹", decimals: 0, basePrice: 76850, baseChangePct: 0.64 },
+    { symbolKey: "GOLD_SPOT", displayName: "Gold Spot (XAU/USD)", shortLabel: "XAU/USD", exchange: "COMEX", category: "COMMODITY", unitPrefix: "$", decimals: 2, basePrice: 2684.50, baseChangePct: 0.58 },
+    { symbolKey: "SILVER_MCX", displayName: "Silver Futures (MCX)", shortLabel: "MCX SILVER", exchange: "MCX", category: "COMMODITY", unitPrefix: "₹", decimals: 0, basePrice: 91420, baseChangePct: 1.12 },
+    { symbolKey: "SILVER_SPOT", displayName: "Silver Spot (XAG/USD)", shortLabel: "XAG/USD", exchange: "COMEX", category: "COMMODITY", unitPrefix: "$", decimals: 2, basePrice: 31.45, baseChangePct: 0.95 },
+    { symbolKey: "CRUDE_MCX", displayName: "Crude Oil Futures (MCX)", shortLabel: "MCX CRUDE", exchange: "MCX", category: "COMMODITY", unitPrefix: "₹", decimals: 0, basePrice: 5890, baseChangePct: -0.42 },
+    { symbolKey: "CRUDE_WTI", displayName: "WTI Crude Oil", shortLabel: "WTI OIL", exchange: "NYMEX", category: "COMMODITY", unitPrefix: "$", decimals: 2, basePrice: 70.18, baseChangePct: -0.38 },
+    { symbolKey: "BRENT_OIL", displayName: "Brent Crude Oil", shortLabel: "BRENT", exchange: "ICE", category: "COMMODITY", unitPrefix: "$", decimals: 2, basePrice: 73.85, baseChangePct: -0.31 },
+    { symbolKey: "NATGAS_MCX", displayName: "Natural Gas (MCX)", shortLabel: "MCX NATGAS", exchange: "MCX", category: "COMMODITY", unitPrefix: "₹", decimals: 1, basePrice: 238.4, baseChangePct: 2.15 },
+    { symbolKey: "COPPER_MCX", displayName: "Copper Futures (MCX)", shortLabel: "MCX COPPER", exchange: "MCX", category: "COMMODITY", unitPrefix: "₹", decimals: 1, basePrice: 824.5, baseChangePct: 0.48 },
+    { symbolKey: "ZINC_MCX", displayName: "Zinc Futures (MCX)", shortLabel: "MCX ZINC", exchange: "MCX", category: "COMMODITY", unitPrefix: "₹", decimals: 1, basePrice: 284.2, baseChangePct: 0.35 },
+    { symbolKey: "ALUMINIUM_MCX", displayName: "Aluminium Futures (MCX)", shortLabel: "ALUMINIUM", exchange: "MCX", category: "COMMODITY", unitPrefix: "₹", decimals: 1, basePrice: 241.8, baseChangePct: 0.22 },
+    { symbolKey: "NIFTY_50", displayName: "Nifty 50 Index", shortLabel: "NIFTY 50", exchange: "NSE", category: "INDEX", unitPrefix: "₹", decimals: 2, basePrice: 24385.50, baseChangePct: 0.52 },
+    { symbolKey: "BANK_NIFTY", displayName: "Nifty Bank Index", shortLabel: "BANKNIFTY", exchange: "NSE", category: "INDEX", unitPrefix: "₹", decimals: 2, basePrice: 52180.25, baseChangePct: 0.74 },
+    { symbolKey: "SENSEX", displayName: "BSE Sensex 30", shortLabel: "SENSEX", exchange: "BSE", category: "INDEX", unitPrefix: "₹", decimals: 2, basePrice: 80140.80, baseChangePct: 0.49 },
+    { symbolKey: "FINNIFTY", displayName: "Nifty Financial Services", shortLabel: "FINNIFTY", exchange: "NSE", category: "INDEX", unitPrefix: "₹", decimals: 2, basePrice: 23940.10, baseChangePct: 0.61 },
+    { symbolKey: "MIDCAP_NIFTY", displayName: "Nifty Midcap Select", shortLabel: "MIDCPNIFTY", exchange: "NSE", category: "INDEX", unitPrefix: "₹", decimals: 2, basePrice: 12680.40, baseChangePct: 0.88 },
+    { symbolKey: "NASDAQ_100", displayName: "NASDAQ 100 Futures", shortLabel: "NASDAQ", exchange: "CME", category: "GLOBAL", unitPrefix: "$", decimals: 1, basePrice: 20480.5, baseChangePct: 0.67 },
+    { symbolKey: "SP_500", displayName: "S&P 500 Futures", shortLabel: "S&P 500", exchange: "CME", category: "GLOBAL", unitPrefix: "$", decimals: 1, basePrice: 5892.0, baseChangePct: 0.44 },
+    { symbolKey: "DOW_JONES", displayName: "Dow Jones 30", shortLabel: "DOW 30", exchange: "CBOT", category: "GLOBAL", unitPrefix: "$", decimals: 0, basePrice: 43290, baseChangePct: 0.31 },
+    { symbolKey: "USD_INR", displayName: "USD / INR Spot", shortLabel: "USD/INR", exchange: "FX", category: "FOREX", unitPrefix: "₹", decimals: 2, basePrice: 84.38, baseChangePct: 0.08 },
+    { symbolKey: "EUR_USD", displayName: "EUR / USD Spot", shortLabel: "EUR/USD", exchange: "FX", category: "FOREX", unitPrefix: "$", decimals: 4, basePrice: 1.0742, baseChangePct: -0.14 },
+    { symbolKey: "BTC_USD", displayName: "Bitcoin (BTC/USD)", shortLabel: "BTC/USD", exchange: "CRYPTO", category: "CRYPTO", unitPrefix: "$", decimals: 0, basePrice: 89450, baseChangePct: 3.42 },
+    { symbolKey: "ETH_USD", displayName: "Ethereum (ETH/USD)", shortLabel: "ETH/USD", exchange: "CRYPTO", category: "CRYPTO", unitPrefix: "$", decimals: 2, basePrice: 3120.50, baseChangePct: 2.18 }
+  ];
+
+  const webMarketState = {};
+  WEB_MARKET_CATALOG.forEach(item => {
+    const pts = [];
+    let p = item.basePrice * (1 - item.baseChangePct / 200);
+    for (let i = 0; i < 18; i++) {
+      p = p * (1 + (Math.random() - 0.47) * 0.002);
+      pts.push(p);
+    }
+    pts.push(item.basePrice);
+    webMarketState[item.symbolKey] = {
+      ...item,
+      lastPrice: item.basePrice,
+      changePercent: item.baseChangePct,
+      high24h: item.basePrice * 1.008,
+      low24h: item.basePrice * 0.992,
+      sparkline: pts
+    };
+  });
+
+  async function fetchLiveBinanceBenchmarks() {
+    try {
+      const pairs = [
+        ["PAXGUSDT", "GOLD_SPOT"],
+        ["BTCUSDT", "BTC_USD"],
+        ["ETHUSDT", "ETH_USD"]
+      ];
+      for (const [binanceSym, key] of pairs) {
+        const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${binanceSym}`);
+        if (!res.ok) continue;
+        const data = await res.json();
+        const last = parseFloat(data.lastPrice || "0");
+        const pct = parseFloat(data.priceChangePercent || "0");
+        const hi = parseFloat(data.highPrice || "0");
+        const lo = parseFloat(data.lowPrice || "0");
+        if (last > 0 && webMarketState[key]) {
+          webMarketState[key].lastPrice = last;
+          webMarketState[key].changePercent = pct;
+          webMarketState[key].high24h = hi > 0 ? hi : last * 1.01;
+          webMarketState[key].low24h = lo > 0 ? lo : last * 0.99;
+          if (key === "GOLD_SPOT" && webMarketState["GOLD_MCX"]) {
+            const mcxGold = Math.round(last * 28.62);
+            webMarketState["GOLD_MCX"].lastPrice = mcxGold;
+            webMarketState["GOLD_MCX"].changePercent = pct;
+            webMarketState["GOLD_MCX"].high24h = Math.round(mcxGold * 1.006);
+            webMarketState["GOLD_MCX"].low24h = Math.round(mcxGold * 0.994);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+  fetchLiveBinanceBenchmarks();
+  setInterval(fetchLiveBinanceBenchmarks, 20000);
+
+  function formatMarketNum(val, decimals) {
+    return Number(val || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    });
+  }
+
+  function buildSparklineSvg(points, isPos, width = 64, height = 22) {
+    if (!points || points.length < 2) return "";
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const range = Math.max(0.0001, max - min);
+    const coords = points.map((v, idx) => {
+      const x = ((idx / (points.length - 1)) * width).toFixed(1);
+      const y = (height - 2 - ((v - min) / range) * (height - 4)).toFixed(1);
+      return `${x},${y}`;
+    }).join(" ");
+    const stroke = isPos ? "#00E676" : "#FF5252";
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow:visible;flex-shrink:0;"><polyline fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="${coords}"/></svg>`;
+  }
+
+  function getPinnedMarketSymbols() {
+    const { marketWatchConfig } = parsePricingMeta();
+    const raw = (marketWatchConfig?.pinnedSymbolsCsv || "GOLD_MCX,SILVER_MCX,CRUDE_MCX,NIFTY_50,BANK_NIFTY,NATGAS_MCX")
+      .split(",")
+      .map(s => s.trim().toUpperCase())
+      .filter(Boolean);
+    return raw.length > 0 ? raw : ["GOLD_MCX", "SILVER_MCX", "CRUDE_MCX", "NIFTY_50", "BANK_NIFTY"];
+  }
+
+  function getCustomMarketOverrides() {
+    const { marketWatchConfig } = parsePricingMeta();
+    const out = {};
+    String(marketWatchConfig?.customOverridesCsv || "").split(",").forEach(entry => {
+      const [k, v] = entry.split("=");
+      const num = parseFloat(v);
+      if (k && !isNaN(num) && num > 0) out[k.trim().toUpperCase()] = num;
+    });
+    return out;
+  }
+
+  function tickWebLiveMarkets() {
+    const overrides = getCustomMarketOverrides();
+    Object.values(webMarketState).forEach(q => {
+      const microDelta = (Math.random() - 0.488) * 0.0012;
+      if (overrides[q.symbolKey]) {
+        q.lastPrice = overrides[q.symbolKey] * (1 + microDelta * 0.25);
+      } else {
+        q.lastPrice = q.lastPrice * (1 + microDelta);
+        q.changePercent = Number((q.changePercent + microDelta * 45).toFixed(2));
+      }
+      if (q.lastPrice > q.high24h) q.high24h = q.lastPrice;
+      if (q.lastPrice < q.low24h) q.low24h = q.lastPrice;
+      q.sparkline = [...q.sparkline.slice(-17), q.lastPrice];
+    });
+    renderWebLiveMarketWidgets();
+  }
+  setInterval(tickWebLiveMarkets, 3200);
+
+  function renderWebLiveMarketWidgets() {
+    const stripEl = document.getElementById("webTopMarketTickerStrip");
+    const streamBoardEl = document.getElementById("streamLiveMarketDeskContainer");
+    const comBoardEl = document.getElementById("commodityLiveMarketDeskContainer");
+    const pinnedKeys = getPinnedMarketSymbols();
+    const pinnedQuotes = pinnedKeys.map(k => webMarketState[k]).filter(Boolean);
+    const isAdmin = isUserAdmin();
+
+    // Sync Admin Slow-Mode & Link Filter UI state
+    const { moderationRules } = parsePricingMeta();
+    [0, 10, 30, 60].forEach(sec => {
+      document.getElementById("slowChip" + sec)?.classList.toggle("selected", moderationRules.slowModeSeconds === sec);
+    });
+    const linkChip = document.getElementById("blockLinksChipBtn");
+    if (linkChip) {
+      linkChip.classList.toggle("selected", moderationRules.blockExternalLinks);
+      linkChip.textContent = moderationRules.blockExternalLinks ? "🔗 Links Blocked" : "🔗 Allow Links";
+    }
+    const wordsInput = document.getElementById("adminCustomBlockedWordsInput");
+    if (wordsInput && document.activeElement !== wordsInput) {
+      wordsInput.value = moderationRules.customBlockedWordsCsv || "";
+    }
+
+    if (stripEl) {
+      if (!currentUser || !isSessionUnlocked || !showWebLiveTicker || pinnedQuotes.length === 0) {
+        stripEl.style.display = "none";
+      } else {
+        stripEl.style.display = "flex";
+        const adminBtnHtml = isAdmin
+          ? `<button type="button" class="market-ticker-chip" style="border-color:var(--emerald);color:var(--emerald);font-weight:800;font-size:11px;" onclick="openAdminMarketSearchModal()">🔍 + Pin Market</button>`
+          : "";
+        stripEl.innerHTML = adminBtnHtml + pinnedQuotes.map(q => {
+          const isPos = q.changePercent >= 0;
+          const col = isPos ? "#00E676" : "#FF5252";
+          const sign = isPos ? "+" : "";
+          return `
+            <div class="market-ticker-chip" onclick="openLiveMarketDetailModal('${q.symbolKey}')">
+              <div>
+                <div style="font-size:10px;font-weight:900;color:var(--muted);">${escapeHtml(q.shortLabel)}</div>
+                <div style="font-size:12px;font-weight:900;font-variant-numeric:tabular-nums;">${q.unitPrefix}${formatMarketNum(q.lastPrice, q.decimals)}</div>
+              </div>
+              ${buildSparklineSvg(q.sparkline, isPos, 42, 16)}
+              <span style="font-size:11px;font-weight:900;color:${col};">${sign}${q.changePercent.toFixed(2)}%</span>
+            </div>
+          `;
+        }).join("");
+      }
+    }
+
+    const boardHtml = pinnedQuotes.length === 0 ? "" : `
+      <div class="card" style="padding:12px 14px;border-color:rgba(0,230,118,0.35);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="pill pill-emerald">● LIVE MARKET DESK</span>
+            <span style="font-size:12px;font-weight:800;color:var(--muted);">Real-Time Quotes &amp; Technicals</span>
+          </div>
+          ${isAdmin ? `<button type="button" class="btn btn-outline" style="width:auto;padding:5px 12px;font-size:11px;border-color:var(--emerald);color:var(--emerald);" onclick="openAdminMarketSearchModal()">🔍 Search &amp; Pin Market</button>` : ""}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:8px;">
+          ${pinnedQuotes.map(q => {
+            const isPos = q.changePercent >= 0;
+            const col = isPos ? "#00E676" : "#FF5252";
+            const sign = isPos ? "+" : "";
+            const tech = q.changePercent >= 1.0 ? "STRONG BUY" : q.changePercent >= 0.15 ? "BUY" : q.changePercent <= -1.0 ? "STRONG SELL" : q.changePercent <= -0.15 ? "SELL" : "NEUTRAL";
+            return `
+              <div class="market-quote-row" onclick="openLiveMarketDetailModal('${q.symbolKey}')">
+                <div style="min-width:0;flex:1;">
+                  <div style="display:flex;align-items:center;gap:5px;">
+                    <span style="font-weight:900;font-size:13px;">${escapeHtml(q.shortLabel)}</span>
+                    <span style="font-size:10px;color:var(--muted);">${escapeHtml(q.exchange)}</span>
+                  </div>
+                  <div style="font-size:10px;color:${col};font-weight:800;margin-top:2px;">${tech} • H:${formatMarketNum(q.high24h, q.decimals)} L:${formatMarketNum(q.low24h, q.decimals)}</div>
+                </div>
+                ${buildSparklineSvg(q.sparkline, isPos, 54, 22)}
+                <div style="text-align:right;">
+                  <div style="font-weight:900;font-size:14px;font-variant-numeric:tabular-nums;">${q.unitPrefix}${formatMarketNum(q.lastPrice, q.decimals)}</div>
+                  <div style="font-size:11px;font-weight:900;color:${col};">${sign}${q.changePercent.toFixed(2)}%</div>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+    if (streamBoardEl) streamBoardEl.innerHTML = boardHtml;
+    if (comBoardEl) comBoardEl.innerHTML = commoditySearchText ? "" : boardHtml;
+  }
+
+  window.openAdminMarketSearchModal = function() {
+    if (!isUserAdmin()) return;
+    document.getElementById("adminMarketSearchPinModal")?.classList.add("open");
+    window.renderAdminMarketSearchList();
+  };
+  window.closeAdminMarketSearchModal = function() {
+    document.getElementById("adminMarketSearchPinModal")?.classList.remove("open");
+  };
+
+  window.renderAdminMarketSearchList = function() {
+    const listEl = document.getElementById("adminMarketSearchResultsList");
+    if (!listEl) return;
+    const q = (document.getElementById("adminMarketSearchQueryInput")?.value || "").trim().toLowerCase();
+    const pinnedSet = new Set(getPinnedMarketSymbols());
+    const items = WEB_MARKET_CATALOG.filter(m =>
+      !q || m.displayName.toLowerCase().includes(q) || m.shortLabel.toLowerCase().includes(q) || m.category.toLowerCase().includes(q) || m.exchange.toLowerCase().includes(q)
+    );
+    listEl.innerHTML = items.map(item => {
+      const live = webMarketState[item.symbolKey] || item;
+      const isPinned = pinnedSet.has(item.symbolKey);
+      const isPos = (live.changePercent || 0) >= 0;
+      const col = isPos ? "#00E676" : "#FF5252";
+      return `
+        <div style="padding:10px 12px;border-radius:12px;border:1px solid ${isPinned ? "var(--emerald)" : "var(--border)"};background:var(--surface-elevated);display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:900;font-size:13px;">${escapeHtml(item.displayName)} <span class="pill pill-blue" style="font-size:10px;padding:2px 7px;">${escapeHtml(item.exchange)}</span></div>
+              <div style="font-size:12px;font-weight:800;color:${col};margin-top:2px;">
+                ${item.unitPrefix}${formatMarketNum(live.lastPrice, item.decimals)} (${isPos ? "+" : ""}${Number(live.changePercent || 0).toFixed(2)}%)
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" class="btn ${isPinned ? "btn-crimson" : "btn-primary"}" style="width:auto;padding:6px 12px;font-size:11px;" onclick="toggleWebPinnedMarketSymbol('${item.symbolKey}')">
+                ${isPinned ? "📌 Unpin" : "📌 Pin to App"}
+              </button>
+              <button type="button" class="btn btn-outline" style="width:auto;padding:6px 10px;font-size:11px;" onclick="quickBroadcastFromLiveQuote('${item.symbolKey}','BUY')">🟢 BUY Call</button>
+              <button type="button" class="btn btn-outline" style="width:auto;padding:6px 10px;font-size:11px;" onclick="quickBroadcastFromLiveQuote('${item.symbolKey}','SELL')">🔴 SELL Call</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  };
+
+  window.toggleWebPinnedMarketSymbol = async function(symbolKey) {
+    if (!isUserAdmin()) return;
+    const { marketWatchConfig } = parsePricingMeta();
+    const current = getPinnedMarketSymbols();
+    const next = current.includes(symbolKey)
+      ? current.filter(s => s !== symbolKey)
+      : [...current, symbolKey].slice(0, 12);
+    const finalList = next.length > 0 ? next : ["GOLD_MCX"];
+    try {
+      const updatedBenefits = buildBenefitsWithUpdatedMeta({
+        marketWatchConfig: {
+          pinnedSymbolsCsv: finalList.join(","),
+          customOverridesCsv: marketWatchConfig.customOverridesCsv || ""
+        }
+      });
+      await updateDoc(doc(db, "app_config", "pricing"), { benefits: updatedBenefits, updatedAt: serverTimestamp() });
+      pricingConfig.benefits = updatedBenefits;
+      renderWebLiveMarketWidgets();
+      renderAdminMarketSearchList();
+      window.playWebSound("success");
+      showToast(current.includes(symbolKey) ? `Unpinned ${symbolKey}` : `📌 Pinned ${symbolKey} to Live Market Board!`);
+    } catch (e) {
+      showToast(e?.message || "Failed to update pinned market");
+    }
+  };
+
+  window.openLiveMarketDetailModal = function(symbolKey) {
+    const q = webMarketState[symbolKey];
+    const bodyEl = document.getElementById("liveMarketDetailModalBody");
+    if (!q || !bodyEl) return;
+    const isPos = q.changePercent >= 0;
+    const col = isPos ? "#00E676" : "#FF5252";
+    const tech = q.changePercent >= 1.0 ? "STRONG BUY" : q.changePercent >= 0.15 ? "BUY" : q.changePercent <= -1.0 ? "STRONG SELL" : q.changePercent <= -0.15 ? "SELL" : "NEUTRAL";
+    bodyEl.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <span class="pill pill-emerald">${escapeHtml(q.exchange)} • ${escapeHtml(q.category)}</span>
+          <div class="card-title" style="margin-top:4px;font-size:18px;">${escapeHtml(q.displayName)}</div>
+        </div>
+        <button class="icon-btn" onclick="closeLiveMarketDetailModal()">✕</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin:6px 0;">
+        <div style="font-size:28px;font-weight:900;font-variant-numeric:tabular-nums;">${q.unitPrefix}${formatMarketNum(q.lastPrice, q.decimals)}</div>
+        <div style="font-size:15px;font-weight:900;color:${col};">${isPos ? "+" : ""}${q.changePercent.toFixed(2)}% (${tech})</div>
+      </div>
+      <div style="background:var(--surface-elevated);padding:12px;border-radius:12px;display:flex;justify-content:center;">
+        ${buildSparklineSvg(q.sparkline, isPos, 320, 74)}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);">
+        <span>24h Low: <strong>${q.unitPrefix}${formatMarketNum(q.low24h, q.decimals)}</strong></span>
+        <span>24h High: <strong>${q.unitPrefix}${formatMarketNum(q.high24h, q.decimals)}</strong></span>
+      </div>
+      ${isUserAdmin() ? `
+        <div style="padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px;">
+          <div style="font-size:12px;font-weight:800;color:var(--emerald);">👑 Admin 1-Tap Broadcast Call from Live Quote:</div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="quickBroadcastFromLiveQuote('${q.symbolKey}','BUY');closeLiveMarketDetailModal();">🟢 Broadcast BUY Call</button>
+            <button class="btn btn-crimson" onclick="quickBroadcastFromLiveQuote('${q.symbolKey}','SELL');closeLiveMarketDetailModal();">🔴 Broadcast SELL Call</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input id="adminCalibratePriceInput" type="number" step="any" class="input" placeholder="Calibrate benchmark price (${formatMarketNum(q.lastPrice, q.decimals)})" style="flex:1;" />
+            <button class="btn btn-outline" style="width:auto;padding:10px 14px;" onclick="saveWebBenchmarkPriceOverride('${q.symbolKey}')">Set Price</button>
+          </div>
+        </div>
+      ` : ""}
+      <button class="btn btn-outline" onclick="closeLiveMarketDetailModal()">Close</button>
+    `;
+    document.getElementById("liveMarketDetailModal")?.classList.add("open");
+  };
+  window.closeLiveMarketDetailModal = function() {
+    document.getElementById("liveMarketDetailModal")?.classList.remove("open");
+  };
+
+  window.saveWebBenchmarkPriceOverride = async function(symbolKey) {
+    if (!isUserAdmin()) return;
+    const val = parseFloat(document.getElementById("adminCalibratePriceInput")?.value || "0");
+    const { marketWatchConfig } = parsePricingMeta();
+    const map = getCustomMarketOverrides();
+    if (val > 0) map[symbolKey] = val;
+    else delete map[symbolKey];
+    const csv = Object.entries(map).map(([k, v]) => `${k}=${v}`).join(",");
+    try {
+      const updatedBenefits = buildBenefitsWithUpdatedMeta({
+        marketWatchConfig: {
+          pinnedSymbolsCsv: marketWatchConfig.pinnedSymbolsCsv,
+          customOverridesCsv: csv
+        }
+      });
+      await updateDoc(doc(db, "app_config", "pricing"), { benefits: updatedBenefits, updatedAt: serverTimestamp() });
+      pricingConfig.benefits = updatedBenefits;
+      if (val > 0 && webMarketState[symbolKey]) webMarketState[symbolKey].lastPrice = val;
+      renderWebLiveMarketWidgets();
+      closeLiveMarketDetailModal();
+      window.playWebSound("success");
+      showToast(`✅ Calibrated live benchmark price for ${symbolKey}`);
+    } catch (e) {
+      showToast(e?.message || "Failed to calibrate price");
+    }
+  };
+
+  window.quickBroadcastFromLiveQuote = async function(symbolKey, sigType) {
+    if (!isUserAdmin()) return;
+    const q = webMarketState[symbolKey];
+    if (!q) return;
+    const priceStr = `${q.unitPrefix}${formatMarketNum(q.lastPrice, q.decimals)}`;
+    const title = `${sigType} ${q.displayName} (${q.exchange}) @ ${priceStr}`.substring(0, 200);
+    const body = `Live Market Price: ${priceStr} (${q.changePercent >= 0 ? "+" : ""}${q.changePercent.toFixed(2)}%)\n24h High / Low: ${formatMarketNum(q.high24h, q.decimals)} / ${formatMarketNum(q.low24h, q.decimals)}\nFollow strict intraday Stop Loss as per Trading Zone rules.`;
+    const encodedLinkTitle = `__TIER__:ALL|__SIG__:${sigType}|`.substring(0, 195);
+    try {
+      await addDoc(collection(db, "broadcast_messages"), {
+        title,
+        content: body,
+        category: q.category || "COMMODITY",
+        riskLevel: "MEDIUM",
+        markedPhotoBase64: "",
+        linkUrl: "",
+        linkTitle: encodedLinkTitle,
+        isPinned: false,
+        isEdited: false,
+        replyToMessageId: "",
+        replyToTitle: "",
+        replyToSnippet: "",
+        replyToRiskLevel: "NONE",
+        authorId: currentUser.uid,
+        authorName: (userProfile?.fullName || "Atharva Garg").substring(0, 120),
+        visibility: "VERIFIED_MEMBERS",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      closeAdminMarketSearchModal();
+      window.playWebSound(sigType);
+      showToast(`🚀 Published ${sigType} Broadcast for ${q.shortLabel}!`);
+    } catch (e) {
+      showToast(e?.message || "Could not publish market broadcast");
+    }
+  };
+
+  window.updateWebModerationRules = async function(slowSec, blockLinks, customWords) {
+    if (!isUserAdmin()) return;
+    const { moderationRules } = parsePricingMeta();
+    const nextRules = {
+      slowModeSeconds: slowSec !== null && slowSec !== undefined ? slowSec : moderationRules.slowModeSeconds,
+      blockExternalLinks: blockLinks !== null && blockLinks !== undefined ? blockLinks : moderationRules.blockExternalLinks,
+      customBlockedWordsCsv: customWords !== null && customWords !== undefined ? customWords : moderationRules.customBlockedWordsCsv
+    };
+    try {
+      const updatedBenefits = buildBenefitsWithUpdatedMeta({ moderationRules: nextRules });
+      await updateDoc(doc(db, "app_config", "pricing"), { benefits: updatedBenefits, updatedAt: serverTimestamp() });
+      pricingConfig.benefits = updatedBenefits;
+      renderWebLiveMarketWidgets();
+      window.playWebSound("success");
+      showToast(`🛡️ Commodity Rules Saved (Slow-Mode: ${nextRules.slowModeSeconds}s)`);
+    } catch (e) {
+      showToast(e?.message || "Failed to save moderation rules");
+    }
+  };
+
+  window.toggleWebBlockExternalLinks = function() {
+    const { moderationRules } = parsePricingMeta();
+    window.updateWebModerationRules(null, !moderationRules.blockExternalLinks, null);
+  };
+
+  window.saveWebCustomBlockedWords = function() {
+    const val = (document.getElementById("adminCustomBlockedWordsInput")?.value || "").trim();
+    window.updateWebModerationRules(null, null, val);
+  };
 
   function escapeHtml(str) {
     return String(str || "")

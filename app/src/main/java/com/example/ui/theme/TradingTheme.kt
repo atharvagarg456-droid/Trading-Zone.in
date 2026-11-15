@@ -114,6 +114,30 @@ private val MidnightSapphireColors = darkColorScheme(
     outline = Color(0xFF293E73)
 )
 
+private val CrimsonProColors = darkColorScheme(
+    primary = Color(0xFFFF4D6D),
+    onPrimary = Color(0xFF2B020A),
+    primaryContainer = Color(0xFF590D22),
+    onPrimaryContainer = Color(0xFFFFCCD5),
+    secondary = Color(0xFFF59E0B),
+    onSecondary = Color(0xFF271701),
+    secondaryContainer = Color(0xFF4D3004),
+    onSecondaryContainer = Color(0xFFFDE68A),
+    tertiary = Color(0xFF10B981),
+    onTertiary = Color(0xFF032218),
+    background = Color(0xFF0B0508),
+    onBackground = Color(0xFFFFF0F3),
+    surface = Color(0xFF170B10),
+    onSurface = Color(0xFFFFF5F7),
+    surfaceVariant = Color(0xFF2A131D),
+    onSurfaceVariant = Color(0xFFF4ACB7),
+    error = Color(0xFFEF4444),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFF450A0A),
+    onErrorContainer = Color(0xFFFECACA),
+    outline = Color(0xFF522335)
+)
+
 private val LightTradingColors = lightColorScheme(
     primary = Color(0xFF059669),
     onPrimary = Color(0xFFFFFFFF),
@@ -138,62 +162,65 @@ private val LightTradingColors = lightColorScheme(
     outline = Color(0xFFCBD5E1)
 )
 
-private val TradingTypography = Typography(
-    headlineMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 26.sp,
-        lineHeight = 32.sp
-    ),
-    headlineSmall = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Bold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp
-    ),
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Bold,
-        fontSize = 19.sp,
-        lineHeight = 25.sp
-    ),
-    titleMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp,
-        lineHeight = 22.sp
-    ),
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Normal,
-        fontSize = 15.sp,
-        lineHeight = 22.sp
-    ),
-    bodyMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp
-    ),
-    labelLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
-        lineHeight = 18.sp
-    ),
-    labelMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
-        lineHeight = 16.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 15.sp
+private fun buildScaledTypography(scale: Float): Typography {
+    val s = scale.coerceIn(0.85f, 1.40f)
+    return Typography(
+        headlineMedium = TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = (26f * s).sp,
+            lineHeight = (32f * s).sp
+        ),
+        headlineSmall = TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.Bold,
+            fontSize = (22f * s).sp,
+            lineHeight = (28f * s).sp
+        ),
+        titleLarge = TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.Bold,
+            fontSize = (19f * s).sp,
+            lineHeight = (25f * s).sp
+        ),
+        titleMedium = TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = (16f * s).sp,
+            lineHeight = (22f * s).sp
+        ),
+        bodyLarge = TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.Normal,
+            fontSize = (15f * s).sp,
+            lineHeight = (22f * s).sp
+        ),
+        bodyMedium = TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.Normal,
+            fontSize = (14f * s).sp,
+            lineHeight = (20f * s).sp
+        ),
+        labelLarge = TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = (13f * s).sp,
+            lineHeight = (18f * s).sp
+        ),
+        labelMedium = TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.Medium,
+            fontSize = (12f * s).sp,
+            lineHeight = (16f * s).sp
+        ),
+        labelSmall = TextStyle(
+            fontFamily = FontFamily.SansSerif,
+            fontWeight = FontWeight.Medium,
+            fontSize = (11f * s).sp,
+            lineHeight = (15f * s).sp
+        )
     )
-)
+}
 
 @Composable
 private fun animateScheme(target: ColorScheme): ColorScheme {
@@ -232,6 +259,7 @@ private fun animateScheme(target: ColorScheme): ColorScheme {
 @Composable
 fun TradingTheme(
     themePreference: AppThemePreference = AppThemePreference.DARK,
+    fontScaleFactor: Float = 1.0f,
     content: @Composable () -> Unit
 ) {
     val targetScheme = when (themePreference) {
@@ -239,12 +267,13 @@ fun TradingTheme(
         AppThemePreference.CYBER_EMERALD -> CyberEmeraldColors
         AppThemePreference.ROYAL_GOLD -> RoyalGoldColors
         AppThemePreference.MIDNIGHT_SAPPHIRE -> MidnightSapphireColors
+        AppThemePreference.CRIMSON_PRO -> CrimsonProColors
         AppThemePreference.LIGHT -> LightTradingColors
         AppThemePreference.SYSTEM -> if (isSystemInDarkTheme()) ObsidianTerminalColors else LightTradingColors
     }
     MaterialTheme(
         colorScheme = animateScheme(targetScheme),
-        typography = TradingTypography,
+        typography = buildScaledTypography(fontScaleFactor),
         content = content
     )
 }

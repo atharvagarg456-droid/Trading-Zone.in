@@ -2,14 +2,21 @@ package com.example.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.LiveMarketEngine
+import com.example.data.local.MarketInstrumentQuote
 import com.example.data.local.SecurityPreferences
 import com.example.data.model.AccessRequest
 import com.example.data.model.AdminSettings
+import com.example.data.model.AutoTopicClassifier
 import com.example.data.model.BroadcastMessage
+import com.example.data.model.ChatBubbleStylePreference
+import com.example.data.model.CommodityModerationConfig
 import com.example.data.model.CommunityReview
 import com.example.data.model.CustomPlanItem
 import com.example.data.model.DeviceRecord
 import com.example.data.model.FirmwareUpdateConfig
+import com.example.data.model.FontScalePreference
+import com.example.data.model.MarketWatchConfig
 import com.example.data.model.MessageReadReceipt
 import com.example.data.model.ModerationAlert
 import com.example.data.model.PRIMARY_ADMIN_EMAIL
@@ -103,6 +110,36 @@ class TradingViewModel(
         securityPreferences.isLargeTextMode()
     )
     val largeTextMode: StateFlow<Boolean> = _largeTextMode.asStateFlow()
+
+    private val _fontScalePreference = MutableStateFlow(
+        securityPreferences.getFontScalePreference()
+    )
+    val fontScalePreference: StateFlow<FontScalePreference> = _fontScalePreference.asStateFlow()
+
+    private val _chatBubbleStylePreference = MutableStateFlow(
+        securityPreferences.getChatBubbleStylePreference()
+    )
+    val chatBubbleStylePreference: StateFlow<ChatBubbleStylePreference> = _chatBubbleStylePreference.asStateFlow()
+
+    private val _showLiveMarketTicker = MutableStateFlow(
+        securityPreferences.isShowLiveMarketTicker()
+    )
+    val showLiveMarketTicker: StateFlow<Boolean> = _showLiveMarketTicker.asStateFlow()
+
+    private val _autoScrollFeedEnabled = MutableStateFlow(
+        securityPreferences.isAutoScrollFeedEnabled()
+    )
+    val autoScrollFeedEnabled: StateFlow<Boolean> = _autoScrollFeedEnabled.asStateFlow()
+
+    private val _defaultLandingTab = MutableStateFlow(
+        securityPreferences.getDefaultLandingTab()
+    )
+    val defaultLandingTab: StateFlow<String> = _defaultLandingTab.asStateFlow()
+
+    private val _liveMarketQuotes = MutableStateFlow<List<MarketInstrumentQuote>>(emptyList())
+    val liveMarketQuotes: StateFlow<List<MarketInstrumentQuote>> = _liveMarketQuotes.asStateFlow()
+
+    private var lastCommodityPostMillis = 0L
 
     private val _highRiskVibrationEnabled = MutableStateFlow(
         securityPreferences.isHighRiskVibrationEnabled()
@@ -507,6 +544,16 @@ class TradingViewModel(
                 delay(120_000L)
             }
         }
+        viewModelScope.launch {
+            while (isActive) {
+                try {
+                    val mktCfg = pricingConfig.value.marketWatchConfig()
+                    _liveMarketQuotes.value = LiveMarketEngine.refreshMarketQuotes(mktCfg)
+                } catch (_: Exception) {
+                }
+                delay(3_200L)
+            }
+        }
     }
 
     fun clearStatusMessage() {
@@ -641,6 +688,35 @@ class TradingViewModel(
     fun setLargeTextMode(enabled: Boolean) {
         securityPreferences.setLargeTextMode(enabled)
         _largeTextMode.value = enabled
+        val nextScale = if (enabled) FontScalePreference.LARGE else FontScalePreference.NORMAL
+        securityPreferences.setFontScalePreference(nextScale)
+        _fontScalePreference.value = nextScale
+    }
+
+    fun setFontScalePreference(pref: FontScalePreference) {
+        securityPreferences.setFontScalePreference(pref)
+        _fontScalePreference.value = pref
+        _largeTextMode.value = pref == FontScalePreference.LARGE || pref == FontScalePreference.EXTRA_LARGE
+    }
+
+    fun setChatBubbleStylePreference(pref: ChatBubbleStylePreference) {
+        securityPreferences.setChatBubbleStylePreference(pref)
+        _chatBubbleStylePreference.value = pref
+    }
+
+    fun setShowLiveMarketTicker(enabled: Boolean) {
+        securityPreferences.setShowLiveMarketTicker(enabled)
+        _showLiveMarketTicker.value = enabled
+    }
+
+    fun setAutoScrollFeedEnabled(enabled: Boolean) {
+        securityPreferences.setAutoScrollFeedEnabled(enabled)
+        _autoScrollFeedEnabled.value = enabled
+    }
+
+    fun setDefaultLandingTab(tabName: String) {
+        securityPreferences.setDefaultLandingTab(tabName)
+        _defaultLandingTab.value = securityPreferences.getDefaultLandingTab()
     }
 
     fun setHighRiskVibrationPreference(enabled: Boolean) {
@@ -846,24 +922,45 @@ class TradingViewModel(
             _statusMessage.value = "Syncing your profile, please retry in a moment."
             return
         }
+
+        val modCfg = pricingConfig.value.commodityModerationConfig()
+        if (!isUserAdmin.value && modCfg.slowModeSeconds > 0) {
+            val now = System.currentTimeMillis()
+            val elapsedSec = ((now - lastCommodityPostMillis) / 1000L).toInt()
+            if (lastCommodityPostMillis > 0L && elapsedSec < modCfg.slowModeSeconds) {
+                val waitSec = (modCfg.slowModeSeconds - elapsedSec).coerceAtLeast(1)
+                _statusMessage.value = "Slow-mode active: please wait ${waitSec}s before sending your next message."
+                return
+            }
+        }
+
+        val resolvedTopic = if (topicTag.isBlank() || topicTag.equals("AUTO", ignoreCase = true) || topicTag.equals("All", ignoreCase = true)) {
+            AutoTopicClassifier.classifyTopic(opinionText, topicTag)
+        } else {
+            AutoTopicClassifier.classifyTopic(opinionText, topicTag)
+        }
+
         viewModelScope.launch {
             _isBusy.value = true
             try {
                 repository.submitCommunityReview(
                     profile = profile,
-                    tradeMessageId = tradeMessageId,
-                    tradeMessageTitle = tradeMessageTitle,
-                    tradeRiskLevel = tradeRiskLevel,
-                    topicTag = topicTag,
+                    tradeMessageId = tradeMessageId.ifBlank { "commodity_general" },
+                    tradeMessageTitle = tradeMessageTitle.ifBlank { "Commodity Discussion" },
+                    tradeRiskLevel = tradeRiskLevel.ifBlank { "MEDIUM" },
+                    topicTag = resolvedTopic,
                     rawOpinionText = opinionText,
                     rating = rating,
                     dailyLimitPerUser = pricingConfig.value.dailyReviewLimitPerUser.toInt().coerceAtLeast(1),
-                    isCallerAdmin = isUserAdmin.value
+                    isCallerAdmin = isUserAdmin.value,
+                    blockExternalLinks = modCfg.blockExternalLinks,
+                    customBlockedWords = modCfg.customBlockedWordsList()
                 ).onSuccess { outcome ->
+                    lastCommodityPostMillis = System.currentTimeMillis()
                     _statusMessage.value = if (outcome.hadAbusiveWordsBlurred) {
-                        "Commodity message posted (inappropriate words were blurred and reported to Admin)."
+                        "Posted under $resolvedTopic (restricted words were blurred)."
                     } else {
-                        "Commodity message posted."
+                        "Posted to Commodity ($resolvedTopic)."
                     }
                 }.onFailure { err ->
                     _statusMessage.value = err.localizedMessage ?: "Could not post Commodity message."
@@ -1270,7 +1367,9 @@ class TradingViewModel(
         customPlans: List<CustomPlanItem> = pricingConfig.value.customPlans(),
         todayProfitBanner: TodayProfitBanner = pricingConfig.value.todayProfitBanner(),
         announcementTicker: String = pricingConfig.value.announcementTicker(),
-        firmwareConfig: FirmwareUpdateConfig = pricingConfig.value.firmwareConfig()
+        firmwareConfig: FirmwareUpdateConfig = pricingConfig.value.firmwareConfig(),
+        marketWatchConfig: MarketWatchConfig = pricingConfig.value.marketWatchConfig(),
+        commodityModerationConfig: CommodityModerationConfig = pricingConfig.value.commodityModerationConfig()
     ) {
         viewModelScope.launch {
             _isBusy.value = true
@@ -1280,7 +1379,7 @@ class TradingViewModel(
                         it.startsWith("__CP__|") ||
                         it.startsWith("__PNL__|") ||
                         it.startsWith("__TICKER__|") ||
-                        it.startsWith("__META_FW__:")
+                        it.startsWith("__META_")
                 }
                 val encodedBenefits = PricingConfig.buildBenefitsWithMeta(
                     displayBenefits = cleanDisplayBenefits,
@@ -1288,7 +1387,9 @@ class TradingViewModel(
                     customPlans = customPlans,
                     todayProfit = todayProfitBanner,
                     announcementTicker = announcementTicker,
-                    firmwareConfig = firmwareConfig
+                    firmwareConfig = firmwareConfig,
+                    marketWatchConfig = marketWatchConfig,
+                    commodityModerationConfig = commodityModerationConfig
                 )
                 repository.savePricingConfig(
                     planName = planName,
@@ -1938,5 +2039,139 @@ class TradingViewModel(
                 .onSuccess { _statusMessage.value = "Removed Co-Admin $clean." }
                 .onFailure { _statusMessage.value = it.localizedMessage ?: "Failed to remove Co-Admin." }
         }
+    }
+
+    fun togglePinnedMarketSymbol(symbolId: String, pin: Boolean) {
+        val cfg = pricingConfig.value
+        val mkt = cfg.marketWatchConfig()
+        val upper = symbolId.trim().uppercase(Locale.ROOT)
+        val updatedSymbols = if (pin) {
+            (mkt.pinnedSymbols + upper).distinct()
+        } else {
+            val remaining = mkt.pinnedSymbols.filterNot { it.equals(upper, ignoreCase = true) }
+            if (remaining.isEmpty()) listOf("GOLD") else remaining
+        }
+        val nextMkt = mkt.copy(pinnedSymbols = updatedSymbols)
+        viewModelScope.launch {
+            _liveMarketQuotes.value = LiveMarketEngine.refreshMarketQuotes(nextMkt)
+        }
+        savePricingAndQrConfig(
+            planName = cfg.planName,
+            priceInr = cfg.priceInr,
+            validityDays = cfg.validityDays,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = cfg.qrCodeBase64,
+            qrOnlyMode = cfg.qrOnlyMode,
+            plan2Enabled = cfg.plan2Enabled,
+            plan2Name = cfg.plan2Name,
+            plan2PriceInr = cfg.plan2PriceInr,
+            plan2ValidityDays = cfg.plan2ValidityDays,
+            plan2QrCodeBase64 = cfg.plan2QrCodeBase64,
+            plan2QrOnlyMode = cfg.plan2QrOnlyMode,
+            plan3Enabled = cfg.plan3Enabled,
+            plan3Name = cfg.plan3Name,
+            plan3PriceInr = cfg.plan3PriceInr,
+            plan3ValidityDays = cfg.plan3ValidityDays,
+            plan3QrCodeBase64 = cfg.plan3QrCodeBase64,
+            plan3QrOnlyMode = cfg.plan3QrOnlyMode,
+            dailyReviewLimitPerUser = cfg.dailyReviewLimitPerUser,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            marketWatchConfig = nextMkt
+        )
+        _statusMessage.value = if (pin) {
+            "Pinned $upper to Live Market Desk for all users!"
+        } else {
+            "Unpinned $upper from Live Market Desk."
+        }
+    }
+
+    fun setCustomMarketBenchmarkOverride(symbolId: String, price: Double?) {
+        val cfg = pricingConfig.value
+        val mkt = cfg.marketWatchConfig()
+        val upper = symbolId.trim().uppercase(Locale.ROOT)
+        val nextOverrides = mkt.customOverrides.toMutableMap()
+        if (price == null || price <= 0.0) {
+            nextOverrides.remove(upper)
+        } else {
+            nextOverrides[upper] = price
+        }
+        val nextMkt = mkt.copy(customOverrides = nextOverrides)
+        viewModelScope.launch {
+            _liveMarketQuotes.value = LiveMarketEngine.refreshMarketQuotes(nextMkt)
+        }
+        savePricingAndQrConfig(
+            planName = cfg.planName,
+            priceInr = cfg.priceInr,
+            validityDays = cfg.validityDays,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = cfg.qrCodeBase64,
+            qrOnlyMode = cfg.qrOnlyMode,
+            plan2Enabled = cfg.plan2Enabled,
+            plan2Name = cfg.plan2Name,
+            plan2PriceInr = cfg.plan2PriceInr,
+            plan2ValidityDays = cfg.plan2ValidityDays,
+            plan2QrCodeBase64 = cfg.plan2QrCodeBase64,
+            plan2QrOnlyMode = cfg.plan2QrOnlyMode,
+            plan3Enabled = cfg.plan3Enabled,
+            plan3Name = cfg.plan3Name,
+            plan3PriceInr = cfg.plan3PriceInr,
+            plan3ValidityDays = cfg.plan3ValidityDays,
+            plan3QrCodeBase64 = cfg.plan3QrCodeBase64,
+            plan3QrOnlyMode = cfg.plan3QrOnlyMode,
+            dailyReviewLimitPerUser = cfg.dailyReviewLimitPerUser,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            marketWatchConfig = nextMkt
+        )
+        _statusMessage.value = if (price != null && price > 0.0) {
+            "Updated live benchmark price for $upper!"
+        } else {
+            "Restored automatic global feed for $upper."
+        }
+    }
+
+    fun updateCommodityModerationRules(
+        slowModeSeconds: Int,
+        blockExternalLinks: Boolean,
+        customBlockedWordsCsv: String
+    ) {
+        val cfg = pricingConfig.value
+        val nextRules = CommodityModerationConfig(
+            slowModeSeconds = slowModeSeconds.coerceIn(0, 300),
+            blockExternalLinks = blockExternalLinks,
+            customBlockedWordsCsv = customBlockedWordsCsv.trim()
+        )
+        savePricingAndQrConfig(
+            planName = cfg.planName,
+            priceInr = cfg.priceInr,
+            validityDays = cfg.validityDays,
+            upiId = cfg.upiId,
+            upiMobileNumber = cfg.upiMobileNumber,
+            qrCodeBase64 = cfg.qrCodeBase64,
+            qrOnlyMode = cfg.qrOnlyMode,
+            plan2Enabled = cfg.plan2Enabled,
+            plan2Name = cfg.plan2Name,
+            plan2PriceInr = cfg.plan2PriceInr,
+            plan2ValidityDays = cfg.plan2ValidityDays,
+            plan2QrCodeBase64 = cfg.plan2QrCodeBase64,
+            plan2QrOnlyMode = cfg.plan2QrOnlyMode,
+            plan3Enabled = cfg.plan3Enabled,
+            plan3Name = cfg.plan3Name,
+            plan3PriceInr = cfg.plan3PriceInr,
+            plan3ValidityDays = cfg.plan3ValidityDays,
+            plan3QrCodeBase64 = cfg.plan3QrCodeBase64,
+            plan3QrOnlyMode = cfg.plan3QrOnlyMode,
+            dailyReviewLimitPerUser = cfg.dailyReviewLimitPerUser,
+            commodityChatLocked = cfg.commodityChatLocked,
+            trialDays = cfg.trialDays,
+            benefits = cfg.displayBenefits(),
+            commodityModerationConfig = nextRules
+        )
+        _statusMessage.value = "Updated Commodity Slow-Mode, Link Filter & Custom Blocked Words!"
     }
 }

@@ -101,12 +101,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.data.local.MarketInstrumentQuote
+import com.example.data.model.AutoTopicClassifier
 import com.example.data.model.BroadcastMessage
+import com.example.data.model.ChatBubbleStylePreference
 import com.example.data.model.CommunityReview
 import com.example.data.model.PricingConfig
 import com.example.data.model.TELEGRAM_REACTION_EMOJIS
 import com.example.data.model.TodayProfitBanner
 import com.example.data.model.UserProfile
+import com.example.ui.components.LiveMarketWatchboardCard
 import com.example.util.ImageBase64Util
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -141,14 +145,19 @@ fun CommunityReviewsScreen(
     onUpdateTodayProfitBannerAndCard: (TodayProfitBanner, Boolean) -> Unit = { _, _ -> },
     onClearUnpinnedCommodityMessages: () -> Unit = {},
     onApplyDailyMessageLimit: (Long) -> Unit = {},
+    chatBubbleStyle: ChatBubbleStylePreference = ChatBubbleStylePreference.MODERN_GLASS,
+    compactFeedMode: Boolean = false,
+    liveMarketQuotes: List<MarketInstrumentQuote> = emptyList(),
+    onOpenAdminMarketSearch: () -> Unit = {},
+    onSelectMarketQuote: (MarketInstrumentQuote) -> Unit = {},
+    onUpdateCommodityModerationRules: (slowModeSeconds: Int, blockLinks: Boolean, customWordsCsv: String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val focusManager = LocalFocusManager.current
     var opinionText by rememberSaveable { mutableStateOf("") }
-    var selectedMessageIndex by rememberSaveable { mutableStateOf(0) }
+    var directInputText by rememberSaveable { mutableStateOf("") }
     var selectedTopicFilter by rememberSaveable { mutableStateOf("All") }
-    var selectedPostTopic by rememberSaveable { mutableStateOf("Gold / Silver") }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearchFocused by remember { mutableStateOf(false) }
     var showComposer by rememberSaveable { mutableStateOf(false) }
@@ -158,6 +167,11 @@ fun CommunityReviewsScreen(
         mutableStateOf(pricingConfig.dailyReviewLimitPerUser.toInt().coerceAtLeast(1))
     }
 
+    val modConfig = remember(pricingConfig) { pricingConfig.commodityModerationConfig() }
+    var slowModeSec by remember(modConfig.slowModeSeconds) { mutableStateOf(modConfig.slowModeSeconds) }
+    var blockLinksToggle by remember(modConfig.blockExternalLinks) { mutableStateOf(modConfig.blockExternalLinks) }
+    var customWordsInput by remember(modConfig.customBlockedWordsCsv) { mutableStateOf(modConfig.customBlockedWordsCsv) }
+
     val dailyLimit = pricingConfig.dailyReviewLimitPerUser.toInt().coerceAtLeast(1)
     val usedToday = profile?.usedReviewsToday() ?: 0
     val remainingToday = (dailyLimit - usedToday).coerceAtLeast(0)
@@ -165,8 +179,14 @@ fun CommunityReviewsScreen(
     val isChatLockedForUser = !isAdmin && pricingConfig.commodityChatLocked
     val canPost = isAdmin || (!isUserMuted && !isChatLockedForUser && remainingToday > 0)
 
-    val linkedBroadcast = broadcastMessages.getOrNull(selectedMessageIndex)
+    val latestBroadcast = broadcastMessages.firstOrNull()
     val todayProfitBanner = remember(pricingConfig) { pricingConfig.todayProfitBanner() }
+    val autoDetectedComposerTopic = remember(opinionText, selectedTopicFilter) {
+        AutoTopicClassifier.classifyTopic(opinionText, selectedTopicFilter)
+    }
+    val autoDetectedDirectTopic = remember(directInputText, selectedTopicFilter) {
+        AutoTopicClassifier.classifyTopic(directInputText, selectedTopicFilter)
+    }
 
     val filteredReviews = remember(reviews, selectedTopicFilter, searchQuery) {
         reviews.filter { item ->
@@ -445,6 +465,22 @@ fun CommunityReviewsScreen(
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Text("Post P&L", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
                                             }
+                                            Button(
+                                                onClick = onOpenAdminMarketSearch,
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = Color(0xFF10B981),
+                                                    contentColor = Color.Black
+                                                ),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .testTag("commodity_admin_market_search_button"),
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Pin Live Market", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                                            }
                                             OutlinedButton(
                                                 onClick = onClearUnpinnedCommodityMessages,
                                                 shape = RoundedCornerShape(10.dp),
@@ -453,6 +489,73 @@ fun CommunityReviewsScreen(
                                                 Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text("Clear", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                            }
+                                        }
+
+                                        // Slow-Mode Cooldown & Link / Custom Word Filter Controls
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .horizontalScroll(rememberScrollState()),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Slow-Mode:",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            listOf(0 to "Off", 10 to "10s", 30 to "30s", 60 to "60s").forEach { (sec, label) ->
+                                                FilterChip(
+                                                    selected = slowModeSec == sec,
+                                                    onClick = {
+                                                        com.example.util.SoundAndHapticFeedback.playTap(context)
+                                                        slowModeSec = sec
+                                                        onUpdateCommodityModerationRules(sec, blockLinksToggle, customWordsInput)
+                                                    },
+                                                    label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                                                )
+                                            }
+                                            FilterChip(
+                                                selected = blockLinksToggle,
+                                                onClick = {
+                                                    com.example.util.SoundAndHapticFeedback.playTap(context)
+                                                    blockLinksToggle = !blockLinksToggle
+                                                    onUpdateCommodityModerationRules(slowModeSec, blockLinksToggle, customWordsInput)
+                                                },
+                                                label = {
+                                                    Text(
+                                                        text = if (blockLinksToggle) "🔗 Links Blocked" else "🔗 Allow Links",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedTextField(
+                                                value = customWordsInput,
+                                                onValueChange = { customWordsInput = it },
+                                                placeholder = { Text("Blocked words (comma separated)", style = MaterialTheme.typography.labelSmall) },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                                    onUpdateCommodityModerationRules(slowModeSec, blockLinksToggle, customWordsInput)
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Text("Save Rules", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                             }
                                         }
                                     }
@@ -495,9 +598,6 @@ fun CommunityReviewsScreen(
                         Button(
                             onClick = {
                                 focusManager.clearFocus()
-                                if (selectedTopicFilter != "All") {
-                                    selectedPostTopic = selectedTopicFilter
-                                }
                                 showComposer = true
                             },
                             enabled = canPost,
@@ -507,13 +607,13 @@ fun CommunityReviewsScreen(
                             shape = RoundedCornerShape(14.dp),
                             contentPadding = PaddingValues(horizontal = 14.dp)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Open Post Composer", modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Open Direct Post", modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Post", fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     }
 
-                    // Horizontal Topic Filter Chips
+                    // Horizontal Topic Filter Chips (Also sets default topic if user filters by a category)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -525,8 +625,8 @@ fun CommunityReviewsScreen(
                             FilterChip(
                                 selected = selectedTopicFilter == topic,
                                 onClick = {
+                                    com.example.util.SoundAndHapticFeedback.playTap(context)
                                     selectedTopicFilter = topic
-                                    if (topic != "All") selectedPostTopic = topic
                                 },
                                 label = { Text(topic, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
                             )
@@ -535,14 +635,25 @@ fun CommunityReviewsScreen(
                 }
             }
 
-            // Scrollable Stream (Includes P&L Banner, Status Notices, and Commodity Messages)
+            // Scrollable Stream (Includes Live Market Watchboard, P&L Banner, Status Notices, and Commodity Messages)
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 88.dp)
+                verticalArrangement = Arrangement.spacedBy(if (compactFeedMode) 8.dp else 10.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
             ) {
+                if (!collapseChromeForSearch && liveMarketQuotes.isNotEmpty()) {
+                    item(key = "commodity_live_market_board") {
+                        LiveMarketWatchboardCard(
+                            quotes = liveMarketQuotes,
+                            isAdmin = isAdmin,
+                            onOpenAdminSearchDialog = onOpenAdminMarketSearch,
+                            onSelectQuote = onSelectMarketQuote
+                        )
+                    }
+                }
+
                 if (!collapseChromeForSearch && (todayProfitBanner.enabled || isAdmin)) {
                     item(key = "owner_pnl_banner") {
                         OwnerTodayProfitBannerCard(
@@ -664,6 +775,8 @@ fun CommunityReviewsScreen(
                                     targetId = targetId,
                                     reactions = itemReactions,
                                     myReactedKeys = myReactedKeys,
+                                    chatBubbleStyle = chatBubbleStyle,
+                                    compactMode = compactFeedMode,
                                     onReact = { emoji -> onToggleReaction(targetId, emoji) },
                                     onTogglePin = { onTogglePinReview(review.id, !review.isPinned) },
                                     onDelete = { onDeleteReview(review.id) }
@@ -673,36 +786,99 @@ fun CommunityReviewsScreen(
                     }
                 }
             }
-        }
 
-        // Always-Accessible Floating Post Button (Never gets pushed off-screen)
-        if (canPost) {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    com.example.util.SoundAndHapticFeedback.playTap(context)
-                    focusManager.clearFocus()
-                    if (selectedTopicFilter != "All") {
-                        selectedPostTopic = selectedTopicFilter
+            // Pinned WhatsApp-Style Direct 1-Tap Message Bar (No confusing topic selection required!)
+            if (canPost) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                    tonalElevation = 6.dp
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (directInputText.isNotBlank()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "⚡ Auto-Tag: $autoDetectedDirectTopic",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Text(
+                                    text = if (isAdmin) "Admin Direct Post" else "$remainingToday/$dailyLimit left today",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = directInputText,
+                                onValueChange = { directInputText = it },
+                                placeholder = {
+                                    Text(
+                                        text = "Write direct message (auto-tagged by words)...",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                maxLines = 3,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("commodity_direct_bottom_input"),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            Button(
+                                onClick = {
+                                    val trimmed = directInputText.trim()
+                                    if (trimmed.isNotEmpty()) {
+                                        com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                        val autoTag = AutoTopicClassifier.classifyTopic(trimmed, selectedTopicFilter)
+                                        onSubmitReview(
+                                            latestBroadcast?.id ?: "commodity_general",
+                                            latestBroadcast?.title ?: "Live Market Discussion",
+                                            latestBroadcast?.riskLevel ?: "MEDIUM",
+                                            autoTag,
+                                            trimmed,
+                                            5
+                                        )
+                                        directInputText = ""
+                                        focusManager.clearFocus()
+                                    }
+                                },
+                                enabled = !isBusy && directInputText.trim().isNotEmpty(),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                                modifier = Modifier
+                                    .height(50.dp)
+                                    .testTag("commodity_direct_bottom_send_button")
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send Direct Post", modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Send", fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                            }
+                        }
                     }
-                    showComposer = true
-                },
-                icon = {
-                    Icon(Icons.Default.Edit, contentDescription = "Write Commodity Message")
-                },
-                text = {
-                    Text("New Post", fontWeight = FontWeight.ExtraBold)
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(18.dp)
-                    .testTag("commodity_compose_fab")
-            )
+                }
+            }
         }
     }
 
-    // Keyboard-Aware Commodity Composer Dialog (Topic tags & Send button NEVER get pushed off-screen!)
+    // Direct 1-Step Commodity Post Dialog (Zero manual topic selection — automatically classifies by words or active filter!)
     if (showComposer && canPost) {
         Dialog(
             onDismissRequest = { showComposer = false },
@@ -741,12 +917,16 @@ fun CommunityReviewsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "New Commodity Message",
+                                    text = "Direct Commodity Post",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold
                                 )
                                 Text(
-                                    text = if (isAdmin) "Admin Unlimited" else "$remainingToday/$dailyLimit remaining today • Permanent once sent",
+                                    text = if (isAdmin) {
+                                        "Admin Unlimited • Topic auto-detected from your words"
+                                    } else {
+                                        "$remainingToday/$dailyLimit remaining today • Topic auto-detected automatically"
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -761,89 +941,44 @@ fun CommunityReviewsScreen(
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
 
-                        // Scrollable Body so Topic Tags & Trade Link never clip even on small screens with soft keyboard
-                        Column(
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "⚡ Auto-Assigned Topic:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = autoDetectedComposerTopic,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = opinionText,
+                            onValueChange = { opinionText = it },
+                            label = {
+                                Text("Write your message directly and tap Send...")
+                            },
+                            minLines = 3,
+                            maxLines = 6,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f, fill = false)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = "Choose Topic Tag",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                COMMODITY_TOPICS.drop(1).forEach { topic ->
-                                    FilterChip(
-                                        selected = selectedPostTopic == topic,
-                                        onClick = {
-                                            com.example.util.SoundAndHapticFeedback.playTap(context)
-                                            selectedPostTopic = topic
-                                        },
-                                        label = {
-                                            Text(
-                                                text = topic,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-
-                            if (broadcastMessages.isNotEmpty()) {
-                                Text(
-                                    text = "Link to Broadcast Trade (Optional)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    broadcastMessages.take(5).forEachIndexed { idx, msg ->
-                                        FilterChip(
-                                            selected = selectedMessageIndex == idx,
-                                            onClick = { selectedMessageIndex = idx },
-                                            label = {
-                                                Text(
-                                                    text = msg.title.take(26),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    maxLines = 1,
-                                                    softWrap = false
-                                                )
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-
-                            OutlinedTextField(
-                                value = opinionText,
-                                onValueChange = { opinionText = it },
-                                label = {
-                                    Text("Write Commodity analysis (No phone numbers / emails)")
-                                },
-                                minLines = 3,
-                                maxLines = 5,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("community_opinion_input"),
-                                shape = RoundedCornerShape(14.dp)
-                            )
-                        }
+                                .testTag("community_opinion_input"),
+                            shape = RoundedCornerShape(14.dp)
+                        )
 
                         // Pinned Bottom Send Action (Always visible above keyboard!)
                         Row(
@@ -863,11 +998,12 @@ fun CommunityReviewsScreen(
                                     val trimmed = opinionText.trim()
                                     if (trimmed.isNotEmpty()) {
                                         com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                        val resolvedTopic = AutoTopicClassifier.classifyTopic(trimmed, selectedTopicFilter)
                                         onSubmitReview(
-                                            linkedBroadcast?.id ?: "commodity_general",
-                                            linkedBroadcast?.title ?: "Commodity Discussion",
-                                            linkedBroadcast?.riskLevel ?: "MEDIUM",
-                                            selectedPostTopic,
+                                            latestBroadcast?.id ?: "commodity_general",
+                                            latestBroadcast?.title ?: "Live Market Discussion",
+                                            latestBroadcast?.riskLevel ?: "MEDIUM",
+                                            resolvedTopic,
                                             trimmed,
                                             5
                                         )
@@ -885,7 +1021,7 @@ fun CommunityReviewsScreen(
                                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Send to Commodity",
+                                    text = "Post Directly",
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1
                                 )
@@ -1215,6 +1351,8 @@ private fun CommodityReviewCard(
     targetId: String,
     reactions: Map<String, Int>,
     myReactedKeys: Set<String>,
+    chatBubbleStyle: ChatBubbleStylePreference = ChatBubbleStylePreference.MODERN_GLASS,
+    compactMode: Boolean = false,
     onReact: (String) -> Unit,
     onTogglePin: () -> Unit,
     onDelete: () -> Unit
@@ -1228,7 +1366,7 @@ private fun CommodityReviewCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("community_review_card_${review.id}"),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(chatBubbleStyle.cornerDp.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (review.isPinned) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
@@ -1248,8 +1386,8 @@ private fun CommodityReviewCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(if (compactMode) 10.dp else 14.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compactMode) 6.dp else 8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

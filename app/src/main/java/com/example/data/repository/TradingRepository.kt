@@ -623,7 +623,9 @@ class TradingRepository(private val db: FirebaseFirestore) {
         rawOpinionText: String,
         rating: Int = 5,
         dailyLimitPerUser: Int,
-        isCallerAdmin: Boolean
+        isCallerAdmin: Boolean,
+        blockExternalLinks: Boolean = false,
+        customBlockedWords: List<String> = emptyList()
     ): Result<CommunityPostOutcome> = runCatching {
         val uid = requireUserId()
         if (!isCallerAdmin && profile.isCommodityMuted) {
@@ -637,8 +639,11 @@ class TradingRepository(private val db: FirebaseFirestore) {
 
         val adminEmails = getActiveAdminEmailList()
 
-        // 1. Check for prohibited Phone Number, Email, UPI ID, or Personal Handle
-        val contactCheck = AbusiveWordModerator.checkProhibitedContactOrId(rawOpinionText)
+        // 1. Check for prohibited Phone Number, Email, UPI ID, Personal Handle, or Blocked External Links
+        val contactCheck = AbusiveWordModerator.checkProhibitedContactOrId(
+            rawText = rawOpinionText,
+            blockExternalLinks = !isCallerAdmin && blockExternalLinks
+        )
         if (contactCheck.isBlocked) {
             val alertRef = db.collection("moderation_alerts").document()
             try {
@@ -650,9 +655,9 @@ class TradingRepository(private val db: FirebaseFirestore) {
                         "userPhotoBase64" to profile.photoBase64.take(450000),
                         "deviceId" to profile.deviceId.ifBlank { "UNKNOWN_DEV" }.take(128),
                         "ipAddress" to profile.ipAddress.ifBlank { "0.0.0.0" }.take(100),
-                        "tradeMessageTitle" to "Commodity [BLOCKED PHONE / ID]".take(200),
+                        "tradeMessageTitle" to "Commodity [BLOCKED PHONE / ID / LINK]".take(200),
                         "originalUneditedText" to rawOpinionText.trim().take(2000),
-                        "blurredText" to "[BLOCKED: Attempted to share Phone Number / Personal ID]",
+                        "blurredText" to "[BLOCKED: Attempted to share Phone Number / ID / Restricted Link]",
                         "detectedWords" to contactCheck.reasonSummary.take(500),
                         "status" to "OPEN",
                         "adminEmails" to adminEmails,
@@ -663,12 +668,15 @@ class TradingRepository(private val db: FirebaseFirestore) {
             } catch (_: Exception) {
             }
             throw IllegalStateException(
-                "Message Blocked: Sharing phone numbers, email addresses, or personal IDs is strictly prohibited in Commodity. Admin has been alerted."
+                "Message Blocked: Sharing phone numbers, email addresses, personal IDs, or restricted links is prohibited in Commodity. Admin has been alerted."
             )
         }
 
-        // 2. Check and blur any abusive words
-        val moderation = AbusiveWordModerator.moderateText(rawOpinionText.trim())
+        // 2. Check and blur any abusive or custom blocked words
+        val moderation = AbusiveWordModerator.moderateText(
+            rawText = rawOpinionText.trim(),
+            extraBlockedWords = customBlockedWords
+        )
         val reviewRef = db.collection("community_reviews").document()
         val normalizedRisk = when (tradeRiskLevel.uppercase(Locale.ROOT)) {
             "LOW", "MEDIUM", "HIGH" -> tradeRiskLevel.uppercase(Locale.ROOT)

@@ -37,8 +37,76 @@ enum class AppThemePreference(val title: String, val subtitle: String) {
     CYBER_EMERALD("Cyber Matrix", "Neon Bullish Emerald Glow"),
     ROYAL_GOLD("Royal Bullion", "Institutional Gold & Onyx"),
     MIDNIGHT_SAPPHIRE("Wall Street Pro", "Electric Sapphire & Navy"),
+    CRIMSON_PRO("Crimson Pro", "High-Energy Ruby & Carbon"),
     LIGHT("Daylight Desk", "Crisp High-Contrast Light"),
     SYSTEM("System Auto", "Follow Device Appearance")
+}
+
+enum class FontScalePreference(val title: String, val scaleFactor: Float) {
+    SMALL("Small (90%)", 0.90f),
+    NORMAL("Normal (100%)", 1.00f),
+    LARGE("Large (115%)", 1.15f),
+    EXTRA_LARGE("Extra Large (130%)", 1.30f)
+}
+
+enum class ChatBubbleStylePreference(val title: String, val cornerDp: Int) {
+    MODERN_GLASS("Modern Glass", 20),
+    CLASSIC_SHARP("Sharp Terminal", 8),
+    MINIMAL_FLAT("Minimal Pill", 26)
+}
+
+data class MarketWatchConfig(
+    val pinnedSymbols: List<String> = DEFAULT_PINNED_MARKET_SYMBOLS,
+    val customOverrides: Map<String, Double> = emptyMap()
+) {
+    companion object {
+        val DEFAULT_PINNED_MARKET_SYMBOLS = listOf(
+            "GOLD",
+            "SILVER",
+            "CRUDEOIL",
+            "NATGAS",
+            "NIFTY50",
+            "BANKNIFTY",
+            "USDINR",
+            "BTCUSD"
+        )
+    }
+}
+
+data class CommodityModerationConfig(
+    val slowModeSeconds: Int = 0,
+    val blockExternalLinks: Boolean = false,
+    val customBlockedWordsCsv: String = ""
+) {
+    fun customBlockedWordsList(): List<String> {
+        return customBlockedWordsCsv.split(",")
+            .map { it.trim().lowercase(Locale.ROOT) }
+            .filter { it.isNotBlank() }
+    }
+}
+
+object AutoTopicClassifier {
+    fun classifyTopic(messageText: String, activeFrontFilter: String = "All"): String {
+        val lower = messageText.lowercase(Locale.ROOT)
+        return when {
+            lower.contains("gold") || lower.contains("xau") || lower.contains("silver") ||
+                lower.contains("xag") || lower.contains("bullion") || lower.contains("sona") ||
+                lower.contains("chandi") -> "Gold / Silver"
+            lower.contains("crude") || lower.contains("oil") || lower.contains("wti") ||
+                lower.contains("brent") || lower.contains("natgas") || lower.contains("natural gas") ||
+                lower.contains("ng ") || lower.startsWith("ng") -> "Crude / NatGas"
+            lower.contains("nifty") || lower.contains("banknifty") || lower.contains("bank nifty") ||
+                lower.contains("sensex") || lower.contains("finnifty") || lower.contains("index") -> "Nifty / BankNifty"
+            lower.contains("sl") || lower.contains("stop loss") || lower.contains("stoploss") ||
+                lower.contains("risk") || lower.contains("hedge") || lower.contains("trail") ||
+                lower.contains("lot size") -> "Risk Control"
+            lower.contains("buy") || lower.contains("sell") || lower.contains("long") ||
+                lower.contains("short") || lower.contains("target") || lower.contains("tgt") ||
+                lower.contains("entry") || lower.contains("breakout") || lower.contains("cmp") -> "Trade Setup"
+            activeFrontFilter.isNotBlank() && !activeFrontFilter.equals("All", ignoreCase = true) -> activeFrontFilter
+            else -> "Gold / Silver"
+        }
+    }
 }
 
 data class CustomPlanItem(
@@ -521,6 +589,49 @@ data class PricingConfig(
         )
     }
 
+    fun marketWatchConfig(): MarketWatchConfig {
+        val meta = benefits.firstOrNull { it.startsWith("__META_MKT__:") }
+            ?: return MarketWatchConfig()
+        val raw = meta.removePrefix("__META_MKT__:").trim()
+        if (raw.isBlank()) return MarketWatchConfig()
+        val parts = raw.split("|")
+        val symbolsPart = parts.getOrNull(0).orEmpty()
+        val overridesPart = parts.getOrNull(1).orEmpty()
+        val symbols = symbolsPart.split(",")
+            .map { it.trim().uppercase(Locale.ROOT) }
+            .filter { it.isNotBlank() }
+            .distinct()
+        val overrides = mutableMapOf<String, Double>()
+        overridesPart.split(",").forEach { pair ->
+            val kv = pair.split("=")
+            if (kv.size == 2) {
+                val sym = kv[0].trim().uppercase(Locale.ROOT)
+                val price = kv[1].trim().toDoubleOrNull()
+                if (sym.isNotBlank() && price != null && price > 0.0) {
+                    overrides[sym] = price
+                }
+            }
+        }
+        return MarketWatchConfig(
+            pinnedSymbols = if (symbols.isNotEmpty()) symbols else MarketWatchConfig.DEFAULT_PINNED_MARKET_SYMBOLS,
+            customOverrides = overrides
+        )
+    }
+
+    fun commodityModerationConfig(): CommodityModerationConfig {
+        val meta = benefits.firstOrNull { it.startsWith("__META_RULES__:") }
+            ?: return CommodityModerationConfig()
+        val parts = meta.removePrefix("__META_RULES__:").split("|")
+        val slowSec = parts.getOrNull(0)?.trim()?.toIntOrNull()?.coerceIn(0, 300) ?: 0
+        val blockLinks = parts.getOrNull(1)?.let { it == "1" || it.equals("true", ignoreCase = true) } ?: false
+        val customWords = parts.getOrNull(2)?.trim().orEmpty()
+        return CommodityModerationConfig(
+            slowModeSeconds = slowSec,
+            blockExternalLinks = blockLinks,
+            customBlockedWordsCsv = customWords
+        )
+    }
+
     fun displayBenefits(): List<String> = publicBenefits()
 
     fun publicBenefits(): List<String> {
@@ -634,7 +745,9 @@ data class PricingConfig(
             todayProfit: TodayProfitBanner,
             announcementTicker: String,
             defaultMaxDevices: Int = 2,
-            firmwareConfig: FirmwareUpdateConfig = FirmwareUpdateConfig()
+            firmwareConfig: FirmwareUpdateConfig = FirmwareUpdateConfig(),
+            marketWatchConfig: MarketWatchConfig = MarketWatchConfig(),
+            commodityModerationConfig: CommodityModerationConfig = CommodityModerationConfig()
         ): List<String> {
             val result = mutableListOf<String>()
             result.add("__META_P1_EN__:$plan1Enabled")
@@ -652,10 +765,30 @@ data class PricingConfig(
             result.add(
                 "__META_PNL__:${todayProfit.enabled}|$cleanPnlAmount|$cleanInst|$cleanRoi|$cleanNote|${todayProfit.isProfit}|${todayProfit.updatedAtMillis}|$cleanBroadcast".take(280)
             )
+            val safeSymbols = marketWatchConfig.pinnedSymbols
+                .map { it.trim().uppercase(Locale.ROOT) }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .take(16)
+                .joinToString(",")
+            val safeOverrides = marketWatchConfig.customOverrides.entries
+                .take(12)
+                .joinToString(",") { "${it.key.uppercase(Locale.ROOT)}=${it.value}" }
+            result.add("__META_MKT__:$safeSymbols|$safeOverrides".take(280))
+
+            val safeWords = commodityModerationConfig.customBlockedWordsCsv
+                .replace("|", ",")
+                .replace("\n", ",")
+                .trim()
+                .take(180)
+            result.add(
+                "__META_RULES__:${commodityModerationConfig.slowModeSeconds.coerceIn(0, 300)}|${if (commodityModerationConfig.blockExternalLinks) "1" else "0"}|$safeWords".take(280)
+            )
+
             if (announcementTicker.isNotBlank()) {
                 result.add("__META_TICKER__:${announcementTicker.replace("\n", " ").take(200)}")
             }
-            customPlans.take(8).forEach { cp ->
+            customPlans.take(6).forEach { cp ->
                 val safeId = cp.id.ifBlank { "cp_${System.currentTimeMillis()}" }.replace("|", "").take(20)
                 val safeName = cp.name.replace("|", " ").take(45)
                 val safeBadge = cp.badge.ifBlank { cp.badgeText }.replace("|", " ").take(20)
@@ -820,6 +953,7 @@ object AbusiveWordModerator {
         """(?i)\b(?:whatsapp|telegram|insta|instagram|contact\s*me|call\s*me|dm\s*me|my\s*id|user\s*id|upi|phone\s*no|mobile\s*no)\b"""
     )
     private val spacedDigitsRegex = Regex("""(?:\d\s*){8,13}""")
+    private val urlRegex = Regex("""(?i)\b(?:https?://|www\.|[a-z0-9-]+\.(?:com|in|org|net|io|me|co|ly|gg)/)\S*""")
 
     data class ModerationResult(
         val publicText: String,
@@ -832,7 +966,10 @@ object AbusiveWordModerator {
         val reasonSummary: String
     )
 
-    fun checkProhibitedContactOrId(rawText: String): ProhibitedContactCheckResult {
+    fun checkProhibitedContactOrId(
+        rawText: String,
+        blockExternalLinks: Boolean = false
+    ): ProhibitedContactCheckResult {
         val detected = mutableListOf<String>()
         phoneRegex.find(rawText)?.value?.trim()?.let {
             detected.add("Phone Number ($it)")
@@ -848,6 +985,11 @@ object AbusiveWordModerator {
         handleOrIdKeywordRegex.find(rawText)?.value?.trim()?.let {
             detected.add("Personal ID/Contact Keyword ($it)")
         }
+        if (blockExternalLinks) {
+            urlRegex.find(rawText)?.value?.trim()?.let {
+                detected.add("External Link ($it)")
+            }
+        }
         return if (detected.isNotEmpty()) {
             ProhibitedContactCheckResult(
                 isBlocked = true,
@@ -858,12 +1000,20 @@ object AbusiveWordModerator {
         }
     }
 
-    fun moderateText(rawText: String): ModerationResult {
+    fun moderateText(
+        rawText: String,
+        extraBlockedWords: List<String> = emptyList()
+    ): ModerationResult {
+        val allProhibited = if (extraBlockedWords.isEmpty()) {
+            prohibitedWords
+        } else {
+            prohibitedWords + extraBlockedWords.map { it.trim().lowercase(Locale.ROOT) }.filter { it.isNotBlank() }
+        }
         val detected = mutableSetOf<String>()
-        val tokenRegex = Regex("""\b[A-Za-z]+\b""")
+        val tokenRegex = Regex("""\b[A-Za-z0-9_]+\b""")
         val moderated = tokenRegex.replace(rawText) { match ->
             val word = match.value
-            if (prohibitedWords.contains(word.lowercase(Locale.ROOT))) {
+            if (allProhibited.contains(word.lowercase(Locale.ROOT))) {
                 detected.add(word.lowercase(Locale.ROOT))
                 "▓".repeat(word.length.coerceAtLeast(4))
             } else {

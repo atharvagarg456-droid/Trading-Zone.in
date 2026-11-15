@@ -30,8 +30,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.clickable
 import com.example.data.model.AppThemePreference
+import com.example.data.model.ChatBubbleStylePreference
 import com.example.data.model.DEFAULT_TERMS_AND_CONDITIONS
 import com.example.data.model.DeviceRecord
+import com.example.data.model.FontScalePreference
+import com.example.data.model.PricingConfig
 import com.example.data.model.UserProfile
 import com.example.ui.components.ImageCodecHelper
 import com.example.ui.components.PermanentQrAndShareCard
@@ -74,6 +77,20 @@ fun SettingsScreen(
     onToggleDeviceBlocked: (deviceId: String, blocked: Boolean) -> Unit = { _, _ -> },
     onRemoveDeviceSession: (deviceId: String) -> Unit = {},
     onRequestProfileEdit: (fullName: String, phone: String, city: String, photoBase64: String) -> Unit,
+    fontScalePreference: FontScalePreference = FontScalePreference.NORMAL,
+    chatBubbleStylePreference: ChatBubbleStylePreference = ChatBubbleStylePreference.MODERN_GLASS,
+    showLiveMarketTicker: Boolean = true,
+    autoScrollFeedEnabled: Boolean = true,
+    defaultLandingTab: String = "STREAM",
+    pricingConfig: PricingConfig = PricingConfig(),
+    onChangeFontScale: (FontScalePreference) -> Unit = {},
+    onChangeChatBubbleStyle: (ChatBubbleStylePreference) -> Unit = {},
+    onToggleShowLiveMarketTicker: (Boolean) -> Unit = {},
+    onToggleAutoScrollFeed: (Boolean) -> Unit = {},
+    onChangeDefaultLandingTab: (String) -> Unit = {},
+    onOpenAdminMarketSearch: () -> Unit = {},
+    onUpdateAnnouncementTicker: (String) -> Unit = {},
+    onUpdateCommodityModerationRules: (slowModeSeconds: Int, blockLinks: Boolean, customWordsCsv: String) -> Unit = { _, _, _ -> },
     onLockNow: () -> Unit,
     onSignOut: () -> Unit
 ) {
@@ -601,6 +618,253 @@ fun SettingsScreen(
                 ) {
                     Text("Large Readable Typography", style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = largeTextMode, onCheckedChange = onToggleLargeTextMode)
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                // Font Scale Customization
+                Text(
+                    text = "Typography Font Scale (90% – 130%)",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FontScalePreference.entries.forEach { scaleOpt ->
+                        FilterChip(
+                            selected = fontScalePreference == scaleOpt,
+                            onClick = {
+                                SoundAndHapticFeedback.playTap(context)
+                                onChangeFontScale(scaleOpt)
+                            },
+                            label = { Text(scaleOpt.title) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Chat Bubble Style Customization
+                Text(
+                    text = "Message & Commodity Card Corner Style",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    ChatBubbleStylePreference.entries.forEach { bubbleOpt ->
+                        FilterChip(
+                            selected = chatBubbleStylePreference == bubbleOpt,
+                            onClick = {
+                                SoundAndHapticFeedback.playTap(context)
+                                onChangeChatBubbleStyle(bubbleOpt)
+                            },
+                            label = { Text(bubbleOpt.title) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Default Startup Tab Customization
+                Text(
+                    text = "Default Startup Screen When Opening App",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "STREAM" to "📢 Messages",
+                        "COMMODITY" to "💬 Commodity",
+                        "MEMBERSHIP" to "💎 Plans"
+                    ).forEach { (tabKey, tabLabel) ->
+                        FilterChip(
+                            selected = defaultLandingTab == tabKey,
+                            onClick = {
+                                SoundAndHapticFeedback.playTap(context)
+                                onChangeDefaultLandingTab(tabKey)
+                            },
+                            label = { Text(tabLabel) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Show Top Live Market Ticker Strip", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Real-time Gold, Silver, Nifty & Crude ticker bar at top of screen", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = showLiveMarketTicker, onCheckedChange = onToggleShowLiveMarketTicker)
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto-Scroll Live Broadcast Stream", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Automatically jump to new trade calls as they arrive", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = autoScrollFeedEnabled, onCheckedChange = onToggleAutoScrollFeed)
+                }
+            }
+        }
+
+        // 3A-Admin. Admin Live Customization & Market Pin Studio (Visible to Admin)
+        if (isAdmin) {
+            val modCfg = remember(pricingConfig) { pricingConfig.commodityModerationConfig() }
+            var tickerDraft by remember(pricingConfig) { mutableStateOf(pricingConfig.announcementTicker()) }
+            var slowModeDraft by remember(modCfg.slowModeSeconds) { mutableIntStateOf(modCfg.slowModeSeconds) }
+            var blockLinksDraft by remember(modCfg.blockExternalLinks) { mutableStateOf(modCfg.blockExternalLinks) }
+            var customWordsDraft by remember(modCfg.customBlockedWordsCsv) { mutableStateOf(modCfg.customBlockedWordsCsv) }
+
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.55f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "👑 Admin Live Market & Room Customization",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFF59E0B)
+                            )
+                            Text(
+                                text = "Search & pin live market instruments (Investing.com style), customize announcement ticker, and set Commodity slow-mode / link filters.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            SoundAndHapticFeedback.playTap(context)
+                            onOpenAdminMarketSearch()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF10B981),
+                            contentColor = Color.Black
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("📈 Search & Pin Live Market Instruments (Gold, Nifty, Crude...)", fontWeight = FontWeight.ExtraBold)
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = tickerDraft,
+                            onValueChange = { tickerDraft = it },
+                            label = { Text("Live Announcement Banner Ticker") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                SoundAndHapticFeedback.playSuccess(context)
+                                onUpdateAnnouncementTicker(tickerDraft)
+                            }
+                        ) {
+                            Text("Save")
+                        }
+                    }
+
+                    Text(
+                        text = "Commodity Room Slow-Mode Cooldown:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(0 to "Off (Instant)", 10 to "10 Seconds", 30 to "30 Seconds", 60 to "60 Seconds").forEach { (sec, label) ->
+                            FilterChip(
+                                selected = slowModeDraft == sec,
+                                onClick = {
+                                    SoundAndHapticFeedback.playTap(context)
+                                    slowModeDraft = sec
+                                    onUpdateCommodityModerationRules(sec, blockLinksDraft, customWordsDraft)
+                                },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Block External URLs & Links in Commodity", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Automatically blur http/https/www/t.me links posted by members", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = blockLinksDraft,
+                            onCheckedChange = {
+                                blockLinksDraft = it
+                                onUpdateCommodityModerationRules(slowModeDraft, it, customWordsDraft)
+                            }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = customWordsDraft,
+                            onValueChange = { customWordsDraft = it },
+                            label = { Text("Custom Blocked Words (comma-separated)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                SoundAndHapticFeedback.playSuccess(context)
+                                onUpdateCommodityModerationRules(slowModeDraft, blockLinksDraft, customWordsDraft)
+                            }
+                        ) {
+                            Text("Apply")
+                        }
+                    }
                 }
             }
         }

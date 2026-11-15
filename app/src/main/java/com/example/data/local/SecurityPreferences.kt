@@ -2,6 +2,8 @@ package com.example.data.local
 
 import android.content.Context
 import com.example.data.model.AppThemePreference
+import com.example.data.model.ChatBubbleStylePreference
+import com.example.data.model.FontScalePreference
 import java.security.MessageDigest
 
 class SecurityPreferences(context: Context) {
@@ -163,6 +165,62 @@ class SecurityPreferences(context: Context) {
 
     fun setLargeTextMode(enabled: Boolean) {
         prefs.edit().putBoolean("large_text_mode", enabled).apply()
+    }
+
+    fun getFontScalePreference(): FontScalePreference {
+        val raw = prefs.getString("font_scale_pref", null)
+        if (raw.isNullOrBlank()) {
+            return if (isLargeTextMode()) FontScalePreference.LARGE else FontScalePreference.NORMAL
+        }
+        return try {
+            FontScalePreference.valueOf(raw)
+        } catch (_: Exception) {
+            FontScalePreference.NORMAL
+        }
+    }
+
+    fun setFontScalePreference(pref: FontScalePreference) {
+        prefs.edit()
+            .putString("font_scale_pref", pref.name)
+            .putBoolean("large_text_mode", pref == FontScalePreference.LARGE || pref == FontScalePreference.EXTRA_LARGE)
+            .apply()
+    }
+
+    fun getChatBubbleStylePreference(): ChatBubbleStylePreference {
+        val raw = prefs.getString("chat_bubble_style_pref", ChatBubbleStylePreference.MODERN_GLASS.name)
+        return try {
+            ChatBubbleStylePreference.valueOf(raw ?: ChatBubbleStylePreference.MODERN_GLASS.name)
+        } catch (_: Exception) {
+            ChatBubbleStylePreference.MODERN_GLASS
+        }
+    }
+
+    fun setChatBubbleStylePreference(pref: ChatBubbleStylePreference) {
+        prefs.edit().putString("chat_bubble_style_pref", pref.name).apply()
+    }
+
+    fun isShowLiveMarketTicker(): Boolean {
+        return prefs.getBoolean("show_live_market_ticker", true)
+    }
+
+    fun setShowLiveMarketTicker(enabled: Boolean) {
+        prefs.edit().putBoolean("show_live_market_ticker", enabled).apply()
+    }
+
+    fun isAutoScrollFeedEnabled(): Boolean {
+        return prefs.getBoolean("auto_scroll_feed_enabled", true)
+    }
+
+    fun setAutoScrollFeedEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_scroll_feed_enabled", enabled).apply()
+    }
+
+    fun getDefaultLandingTab(): String {
+        return prefs.getString("default_landing_tab", "STREAM") ?: "STREAM"
+    }
+
+    fun setDefaultLandingTab(tabName: String) {
+        prefs.edit().putString("default_landing_tab", tabName.trim().uppercase()).apply()
     }
 
     fun getOpenedMessageIds(userId: String): Set<String> {
