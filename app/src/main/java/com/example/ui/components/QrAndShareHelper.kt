@@ -798,7 +798,6 @@ fun PermanentQrAndShareCard(
                             WebView(ctx).apply {
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
-                                settings.databaseEnabled = true
                                 webChromeClient = WebChromeClient()
                                 webViewClient = WebViewClient()
                                 loadUrl(LocalWebAppServer.getLoopbackUrl())

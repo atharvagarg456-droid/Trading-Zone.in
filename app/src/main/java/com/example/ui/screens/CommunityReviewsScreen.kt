@@ -6,6 +6,11 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -22,6 +27,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +39,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddReaction
@@ -47,15 +56,19 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,14 +88,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.BroadcastMessage
 import com.example.data.model.CommunityReview
 import com.example.data.model.PricingConfig
@@ -126,12 +144,15 @@ fun CommunityReviewsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val focusManager = LocalFocusManager.current
     var opinionText by rememberSaveable { mutableStateOf("") }
     var selectedMessageIndex by rememberSaveable { mutableStateOf(0) }
     var selectedTopicFilter by rememberSaveable { mutableStateOf("All") }
     var selectedPostTopic by rememberSaveable { mutableStateOf("Gold / Silver") }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isSearchFocused by remember { mutableStateOf(false) }
     var showComposer by rememberSaveable { mutableStateOf(false) }
+    var showAdminTools by rememberSaveable { mutableStateOf(false) }
     var showOwnerPnlDialog by remember { mutableStateOf(false) }
     var inlineLimitSelection by remember(pricingConfig.dailyReviewLimitPerUser) {
         mutableStateOf(pricingConfig.dailyReviewLimitPerUser.toInt().coerceAtLeast(1))
@@ -162,20 +183,31 @@ fun CommunityReviewsScreen(
         }
     }
 
+    val collapseChromeForSearch = isSearchFocused || searchQuery.isNotBlank()
+
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding(),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(
             modifier = Modifier
                 .widthIn(max = 840.dp)
                 .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Top Commodity Header Card
+            // Compact Top Header + Collapsible Admin Tools + Search & Topic Filter
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
@@ -185,227 +217,303 @@ fun CommunityReviewsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    AnimatedVisibility(
+                        visible = !collapseChromeForSearch,
+                        enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(150)),
+                        exit = shrinkVertically(spring(stiffness = Spring.StiffnessMedium)) + fadeOut(tween(110))
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Forum,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                            Column {
-                                Text(
-                                    text = "Commodity Desk & Trade Room",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                                Text(
-                                    text = if (isAdmin) {
-                                        "Owner Mode • Only Admin can delete messages • Live P&L & Reactions"
-                                    } else {
-                                        "Sent messages are permanent • Tap emojis to react like Telegram"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            AssistChip(
-                                onClick = {},
-                                label = {
-                                    Text(
-                                        text = "$onlinePeopleCount Online",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.People,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(15.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            )
-
-                            AssistChip(
-                                onClick = { showComposer = !showComposer },
-                                label = {
-                                    Text(
-                                        text = if (isAdmin) "Unlimited" else "$remainingToday/$dailyLimit Left",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                },
-                                colors = AssistChipDefaults.assistChipColors(
-                                    containerColor = if (canPost) {
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.errorContainer
-                                    }
-                                )
-                            )
-                        }
-                    }
-
-                    // Admin Quick Controls Bar
-                    if (isAdmin) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.weight(1f)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        modifier = Modifier.size(36.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = if (pricingConfig.commodityChatLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                                            contentDescription = null,
-                                            tint = if (pricingConfig.commodityChatLocked) {
-                                                MaterialTheme.colorScheme.error
-                                            } else {
-                                                MaterialTheme.colorScheme.primary
-                                            },
-                                            modifier = Modifier.size(18.dp)
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Default.Forum,
+                                                contentDescription = "Commodity Room",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "Commodity Desk",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = if (pricingConfig.commodityChatLocked) {
-                                                "Commodity Room Locked (Only Admin can post)"
+                                            text = if (isAdmin) {
+                                                "$onlinePeopleCount Online • Unlimited Admin"
                                             } else {
-                                                "Commodity Room Open ($dailyLimit msgs/day per member)"
+                                                "$onlinePeopleCount Online • $remainingToday/$dailyLimit posts left"
                                             },
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
-                                    Switch(
-                                        checked = pricingConfig.commodityChatLocked,
-                                        onCheckedChange = onToggleCommodityChatLock,
-                                        modifier = Modifier.testTag("admin_commodity_lock_switch")
-                                    )
                                 }
 
-                                // Inline Daily Message Limit Selector + Apply right inside Commodity Tab
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text(
-                                        text = "Daily Msg Limit:",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    listOf(1, 2, 3, 5, 10).forEach { limitOpt ->
+                                    if (isAdmin) {
                                         FilterChip(
-                                            selected = inlineLimitSelection == limitOpt,
+                                            selected = showAdminTools,
                                             onClick = {
                                                 com.example.util.SoundAndHapticFeedback.playTap(context)
-                                                inlineLimitSelection = limitOpt
-                                                onApplyDailyMessageLimit(limitOpt.toLong())
+                                                showAdminTools = !showAdminTools
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Default.Tune,
+                                                    contentDescription = "Toggle Admin Controls",
+                                                    modifier = Modifier.size(15.dp)
+                                                )
                                             },
                                             label = {
                                                 Text(
-                                                    text = "${limitOpt}/day",
+                                                    text = if (showAdminTools) "Hide Tools" else "Controls",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = FontWeight.Bold,
+                                                    maxLines = 1
+                                                )
+                                            },
+                                            modifier = Modifier.testTag("commodity_admin_tools_toggle")
+                                        )
+                                    } else {
+                                        AssistChip(
+                                            onClick = { if (canPost) showComposer = true },
+                                            label = {
+                                                Text(
+                                                    text = "$remainingToday/$dailyLimit",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            },
+                                            colors = AssistChipDefaults.assistChipColors(
+                                                containerColor = if (canPost) {
+                                                    MaterialTheme.colorScheme.primaryContainer
+                                                } else {
+                                                    MaterialTheme.colorScheme.errorContainer
+                                                }
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Collapsible Admin Quick Controls Bar
+                            AnimatedVisibility(
+                                visible = isAdmin && showAdminTools,
+                                enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(tween(150)),
+                                exit = shrinkVertically(spring(stiffness = Spring.StiffnessMedium)) + fadeOut(tween(110))
+                            ) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (pricingConfig.commodityChatLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                                    contentDescription = "Room Lock State",
+                                                    tint = if (pricingConfig.commodityChatLocked) {
+                                                        MaterialTheme.colorScheme.error
+                                                    } else {
+                                                        MaterialTheme.colorScheme.primary
+                                                    },
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Text(
+                                                    text = if (pricingConfig.commodityChatLocked) {
+                                                        "Room Locked (Admin Only)"
+                                                    } else {
+                                                        "Room Open ($dailyLimit/day)"
+                                                    },
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Switch(
+                                                checked = pricingConfig.commodityChatLocked,
+                                                onCheckedChange = onToggleCommodityChatLock,
+                                                modifier = Modifier.testTag("admin_commodity_lock_switch")
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .horizontalScroll(rememberScrollState()),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Limit:",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            listOf(1, 2, 3, 5, 10).forEach { limitOpt ->
+                                                FilterChip(
+                                                    selected = inlineLimitSelection == limitOpt,
+                                                    onClick = {
+                                                        com.example.util.SoundAndHapticFeedback.playTap(context)
+                                                        inlineLimitSelection = limitOpt
+                                                        onApplyDailyMessageLimit(limitOpt.toLong())
+                                                    },
+                                                    label = {
+                                                        Text(
+                                                            text = "$limitOpt",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.Bold,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                                    onApplyDailyMessageLimit(inlineLimitSelection.toLong())
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                modifier = Modifier
+                                                    .height(34.dp)
+                                                    .testTag("commodity_inline_apply_limit_button")
+                                            ) {
+                                                Text(
+                                                    text = "Apply",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
                                                     maxLines = 1,
                                                     softWrap = false
                                                 )
                                             }
-                                        )
-                                    }
-                                    Button(
-                                        onClick = {
-                                            com.example.util.SoundAndHapticFeedback.playSuccess(context)
-                                            onApplyDailyMessageLimit(inlineLimitSelection.toLong())
-                                        },
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                        modifier = Modifier
-                                            .height(34.dp)
-                                            .testTag("commodity_inline_apply_limit_button")
-                                    ) {
-                                        Text(
-                                            text = "Apply (${inlineLimitSelection})",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
-                                }
+                                        }
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Button(
-                                        onClick = { showOwnerPnlDialog = true },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag("open_owner_pnl_modal_button"),
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                    ) {
-                                        Icon(Icons.Default.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Post Today's Profit/Loss", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                    }
-                                    OutlinedButton(
-                                        onClick = onClearUnpinnedCommodityMessages,
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                    ) {
-                                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Clear Unpinned", style = MaterialTheme.typography.labelMedium)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = { showOwnerPnlDialog = true },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .testTag("open_owner_pnl_modal_button"),
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.TrendingUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Post P&L", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                                            }
+                                            OutlinedButton(
+                                                onClick = onClearUnpinnedCommodityMessages,
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Clear", style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
-                    // Topic Filter Chips + Search Bar
+                    // Search Bar + Direct Post Modal Trigger (Always visible and keyboard-safe)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Search messages or traders...", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search Commodity") },
+                            trailingIcon = {
+                                if (searchQuery.isNotBlank() || isSearchFocused) {
+                                    IconButton(
+                                        onClick = {
+                                            searchQuery = ""
+                                            focusManager.clearFocus()
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Clear search")
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .onFocusChanged { isSearchFocused = it.isFocused }
+                                .testTag("commodity_search_input"),
+                            shape = RoundedCornerShape(14.dp)
+                        )
+
+                        Button(
+                            onClick = {
+                                focusManager.clearFocus()
+                                if (selectedTopicFilter != "All") {
+                                    selectedPostTopic = selectedTopicFilter
+                                }
+                                showComposer = true
+                            },
+                            enabled = canPost,
+                            modifier = Modifier
+                                .height(52.dp)
+                                .testTag("toggle_commodity_composer_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Open Post Composer", modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Post", fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+                    }
+
+                    // Horizontal Topic Filter Chips
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -416,265 +524,372 @@ fun CommunityReviewsScreen(
                         COMMODITY_TOPICS.forEach { topic ->
                             FilterChip(
                                 selected = selectedTopicFilter == topic,
-                                onClick = { selectedTopicFilter = topic },
-                                label = { Text(topic, style = MaterialTheme.typography.labelSmall) }
+                                onClick = {
+                                    selectedTopicFilter = topic
+                                    if (topic != "All") selectedPostTopic = topic
+                                },
+                                label = { Text(topic, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
                             )
                         }
                     }
+                }
+            }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search Commodity messages or traders...") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            trailingIcon = {
-                                if (searchQuery.isNotBlank()) {
-                                    IconButton(onClick = { searchQuery = "" }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Clear search")
+            // Scrollable Stream (Includes P&L Banner, Status Notices, and Commodity Messages)
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 88.dp)
+            ) {
+                if (!collapseChromeForSearch && (todayProfitBanner.enabled || isAdmin)) {
+                    item(key = "owner_pnl_banner") {
+                        OwnerTodayProfitBannerCard(
+                            banner = todayProfitBanner,
+                            isAdmin = isAdmin,
+                            reactions = emojiReactionsByTarget["pnl_banner"].orEmpty(),
+                            myReactedKeys = myReactedKeys,
+                            onReact = { emoji -> onToggleReaction("pnl_banner", emoji) },
+                            onEditPnl = { showOwnerPnlDialog = true }
+                        )
+                    }
+                }
+
+                if (isUserMuted) {
+                    item(key = "muted_notice") {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.errorContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Block, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                                Text(
+                                    text = "Your account has been muted from posting in Commodity by the Admin.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                } else if (isChatLockedForUser) {
+                    item(key = "locked_notice") {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+                                Text(
+                                    text = "Commodity room is currently paused by the Admin for live market announcement.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (filteredReviews.isEmpty()) {
+                    item(key = "empty_reviews") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "No Commodity messages match this filter yet.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (canPost) {
+                                    Button(onClick = { showComposer = true }) {
+                                        Text("Be the first to post", fontWeight = FontWeight.Bold)
                                     }
                                 }
-                            },
-                            singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("commodity_search_input"),
-                            shape = RoundedCornerShape(14.dp)
-                        )
+                            }
+                        }
+                    }
+                } else {
+                    items(filteredReviews, key = { it.id }) { review ->
+                        val canDelete = isAdmin
+                        val targetId = review.id.ifBlank { "rev_${review.createdAt?.seconds ?: 0L}" }
+                        val itemReactions = emojiReactionsByTarget[targetId].orEmpty()
 
-                        Button(
-                            onClick = { showComposer = !showComposer },
-                            enabled = canPost,
-                            modifier = Modifier
-                                .height(54.dp)
-                                .testTag("toggle_commodity_composer_button"),
-                            shape = RoundedCornerShape(14.dp)
+                        Box(
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = tween(160),
+                                fadeOutSpec = tween(120),
+                                placementSpec = spring(
+                                    dampingRatio = 0.85f,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (showComposer) "Hide" else "Post", fontWeight = FontWeight.Bold)
+                            if (review.isOwnerProfitCard()) {
+                                OwnerInFeedProfitTradeCard(
+                                    review = review,
+                                    isAdmin = isAdmin,
+                                    reactions = itemReactions,
+                                    myReactedKeys = myReactedKeys,
+                                    targetId = targetId,
+                                    onReact = { emoji -> onToggleReaction(targetId, emoji) },
+                                    onTogglePin = { onTogglePinReview(review.id, !review.isPinned) },
+                                    onDelete = { onDeleteReview(review.id) }
+                                )
+                            } else {
+                                CommodityReviewCard(
+                                    review = review,
+                                    isAdmin = isAdmin,
+                                    canDelete = canDelete,
+                                    targetId = targetId,
+                                    reactions = itemReactions,
+                                    myReactedKeys = myReactedKeys,
+                                    onReact = { emoji -> onToggleReaction(targetId, emoji) },
+                                    onTogglePin = { onTogglePinReview(review.id, !review.isPinned) },
+                                    onDelete = { onDeleteReview(review.id) }
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
 
-            // PINNED TOP BANNER: OWNER TODAY'S PROFIT / LOSS WITH TELEGRAM REACTIONS
-            if (todayProfitBanner.enabled || isAdmin) {
-                OwnerTodayProfitBannerCard(
-                    banner = todayProfitBanner,
-                    isAdmin = isAdmin,
-                    reactions = emojiReactionsByTarget["pnl_banner"].orEmpty(),
-                    myReactedKeys = myReactedKeys,
-                    onReact = { emoji -> onToggleReaction("pnl_banner", emoji) },
-                    onEditPnl = { showOwnerPnlDialog = true }
-                )
-            }
-
-            // Status Notices if muted or locked
-            if (isUserMuted) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.errorContainer
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(Icons.Default.Block, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                        Text(
-                            text = "Your account has been muted from posting in Commodity by the Admin.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            fontWeight = FontWeight.SemiBold
-                        )
+        // Always-Accessible Floating Post Button (Never gets pushed off-screen)
+        if (canPost) {
+            ExtendedFloatingActionButton(
+                onClick = {
+                    com.example.util.SoundAndHapticFeedback.playTap(context)
+                    focusManager.clearFocus()
+                    if (selectedTopicFilter != "All") {
+                        selectedPostTopic = selectedTopicFilter
                     }
-                }
-            } else if (isChatLockedForUser) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-                        Text(
-                            text = "Commodity room is currently paused by the Admin for live market announcement.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
+                    showComposer = true
+                },
+                icon = {
+                    Icon(Icons.Default.Edit, contentDescription = "Write Commodity Message")
+                },
+                text = {
+                    Text("New Post", fontWeight = FontWeight.ExtraBold)
+                },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(18.dp)
+                    .testTag("commodity_compose_fab")
+            )
+        }
+    }
 
-            // Expandable Post Composer Card
-            AnimatedVisibility(visible = showComposer && canPost) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+    // Keyboard-Aware Commodity Composer Dialog (Topic tags & Send button NEVER get pushed off-screen!)
+    if (showComposer && canPost) {
+        Dialog(
+            onDismissRequest = { showComposer = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .imePadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 18.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                    tonalElevation = 8.dp,
+                    modifier = Modifier
+                        .widthIn(max = 560.dp)
+                        .fillMaxWidth()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
+                            .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = "Choose Topic Tag (Once sent, only Admin can delete messages)",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            COMMODITY_TOPICS.drop(1).forEach { topic ->
-                                FilterChip(
-                                    selected = selectedPostTopic == topic,
-                                    onClick = { selectedPostTopic = topic },
-                                    label = { Text(topic, style = MaterialTheme.typography.labelSmall) }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "New Commodity Message",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold
                                 )
+                                Text(
+                                    text = if (isAdmin) "Admin Unlimited" else "$remainingToday/$dailyLimit remaining today • Permanent once sent",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(
+                                onClick = { showComposer = false },
+                                modifier = Modifier.testTag("close_commodity_composer_button")
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Close Composer")
                             }
                         }
 
-                        if (broadcastMessages.isNotEmpty()) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+
+                        // Scrollable Body so Topic Tags & Trade Link never clip even on small screens with soft keyboard
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
                             Text(
-                                text = "Link to Broadcast Trade (Optional)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = "Choose Topic Tag",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
                             )
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                broadcastMessages.take(4).forEachIndexed { idx, msg ->
+                                COMMODITY_TOPICS.drop(1).forEach { topic ->
                                     FilterChip(
-                                        selected = selectedMessageIndex == idx,
-                                        onClick = { selectedMessageIndex = idx },
+                                        selected = selectedPostTopic == topic,
+                                        onClick = {
+                                            com.example.util.SoundAndHapticFeedback.playTap(context)
+                                            selectedPostTopic = topic
+                                        },
                                         label = {
                                             Text(
-                                                text = msg.title.take(26),
-                                                style = MaterialTheme.typography.labelSmall
+                                                text = topic,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     )
                                 }
                             }
-                        }
 
-                        OutlinedTextField(
-                            value = opinionText,
-                            onValueChange = { opinionText = it },
-                            label = {
-                                Text("Write your Commodity analysis (No phone numbers / emails; cannot be deleted by user once sent)")
-                            },
-                            minLines = 2,
-                            maxLines = 4,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("community_opinion_input"),
-                            shape = RoundedCornerShape(14.dp)
-                        )
-
-                        Button(
-                            onClick = {
-                                if (opinionText.trim().length >= 3) {
-                                    onSubmitReview(
-                                        linkedBroadcast?.id ?: "commodity_general",
-                                        linkedBroadcast?.title ?: "Commodity Discussion",
-                                        linkedBroadcast?.riskLevel ?: "MEDIUM",
-                                        selectedPostTopic,
-                                        opinionText.trim(),
-                                        5
-                                    )
-                                    opinionText = ""
-                                    showComposer = false
+                            if (broadcastMessages.isNotEmpty()) {
+                                Text(
+                                    text = "Link to Broadcast Trade (Optional)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    broadcastMessages.take(5).forEachIndexed { idx, msg ->
+                                        FilterChip(
+                                            selected = selectedMessageIndex == idx,
+                                            onClick = { selectedMessageIndex = idx },
+                                            label = {
+                                                Text(
+                                                    text = msg.title.take(26),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        )
+                                    }
                                 }
-                            },
-                            enabled = canPost && !isBusy && opinionText.trim().length >= 3,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .testTag("submit_community_review_button"),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Send to Commodity Room",
-                                fontWeight = FontWeight.Bold
+                            }
+
+                            OutlinedTextField(
+                                value = opinionText,
+                                onValueChange = { opinionText = it },
+                                label = {
+                                    Text("Write Commodity analysis (No phone numbers / emails)")
+                                },
+                                minLines = 3,
+                                maxLines = 5,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("community_opinion_input"),
+                                shape = RoundedCornerShape(14.dp)
                             )
                         }
-                    }
-                }
-            }
 
-            // Live Commodity Stream List
-            if (filteredReviews.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "No Commodity messages match this filter yet.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp)
-                ) {
-                    items(filteredReviews, key = { it.id }) { review ->
-                        // IMPORTANT RULE CONFIRMED BY USER: ONLY ADMIN CAN DELETE COMMODITY MESSAGES!
-                        val canDelete = isAdmin
-                        val targetId = review.id.ifBlank { "rev_${review.createdAt?.seconds ?: 0L}" }
-                        val itemReactions = emojiReactionsByTarget[targetId].orEmpty()
-
-                        if (review.isOwnerProfitCard()) {
-                            OwnerInFeedProfitTradeCard(
-                                review = review,
-                                isAdmin = isAdmin,
-                                reactions = itemReactions,
-                                myReactedKeys = myReactedKeys,
-                                targetId = targetId,
-                                onReact = { emoji -> onToggleReaction(targetId, emoji) },
-                                onTogglePin = { onTogglePinReview(review.id, !review.isPinned) },
-                                onDelete = { onDeleteReview(review.id) }
-                            )
-                        } else {
-                            CommodityReviewCard(
-                                review = review,
-                                isAdmin = isAdmin,
-                                canDelete = canDelete,
-                                targetId = targetId,
-                                reactions = itemReactions,
-                                myReactedKeys = myReactedKeys,
-                                onReact = { emoji -> onToggleReaction(targetId, emoji) },
-                                onTogglePin = { onTogglePinReview(review.id, !review.isPinned) },
-                                onDelete = { onDeleteReview(review.id) }
-                            )
+                        // Pinned Bottom Send Action (Always visible above keyboard!)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = { showComposer = false },
+                                modifier = Modifier.height(48.dp),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text("Cancel")
+                            }
+                            Button(
+                                onClick = {
+                                    val trimmed = opinionText.trim()
+                                    if (trimmed.isNotEmpty()) {
+                                        com.example.util.SoundAndHapticFeedback.playSuccess(context)
+                                        onSubmitReview(
+                                            linkedBroadcast?.id ?: "commodity_general",
+                                            linkedBroadcast?.title ?: "Commodity Discussion",
+                                            linkedBroadcast?.riskLevel ?: "MEDIUM",
+                                            selectedPostTopic,
+                                            trimmed,
+                                            5
+                                        )
+                                        opinionText = ""
+                                        showComposer = false
+                                    }
+                                },
+                                enabled = canPost && !isBusy && opinionText.trim().isNotEmpty(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("submit_community_review_button"),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Send to Commodity",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
                 }
@@ -1306,7 +1521,14 @@ fun OwnerProfitEditorDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
                     text = "Publish the Profit or Loss achieved on the Trade Broadcast Message given to members.",
                     style = MaterialTheme.typography.labelSmall,

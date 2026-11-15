@@ -1533,7 +1533,7 @@ class TradingRepository(private val db: FirebaseFirestore) {
             .map { it.trim().take(200) }
             .filter { it.isNotBlank() }
             .distinct()
-            .take(15)
+            .take(MAX_ADMINS_LIMIT)
 
     suspend fun submitCrossDeviceLoginOtp(
         profile: UserProfile?,

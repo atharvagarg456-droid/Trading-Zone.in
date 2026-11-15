@@ -15,6 +15,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -88,6 +90,26 @@ class MainActivity : FragmentActivity() {
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE
         )
+
+        // Request 120Hz / peak supported hardware refresh rate for ultra-smooth scrolling & animations
+        runCatching {
+            val attrs = window.attributes
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val maxMode = display?.supportedModes?.maxByOrNull { it.refreshRate }
+                if (maxMode != null) {
+                    attrs.preferredDisplayModeId = maxMode.modeId
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                @Suppress("DEPRECATION")
+                val maxMode = windowManager.defaultDisplay?.supportedModes?.maxByOrNull { it.refreshRate }
+                if (maxMode != null) {
+                    attrs.preferredDisplayModeId = maxMode.modeId
+                }
+            }
+            @Suppress("DEPRECATION")
+            attrs.preferredRefreshRate = 120f
+            window.attributes = attrs
+        }
 
         enableEdgeToEdge()
         NotificationHelper.ensureChannels(this)
@@ -807,7 +829,7 @@ fun AuthenticatedTradingWorkspace(
                         }
                     }
 
-                    // Super-smooth directional slide + fade transition between bottom navigation tabs
+                    // Super-smooth 120Hz directional slide + micro-scale + fade transition
                     AnimatedContent(
                         targetState = selectedTab,
                         transitionSpec = {
@@ -815,14 +837,20 @@ fun AuthenticatedTradingWorkspace(
                             val slideIn = slideInHorizontally(
                                 animationSpec = spring(
                                     dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMediumLow
+                                    stiffness = Spring.StiffnessMedium
                                 ),
-                                initialOffsetX = { fullWidth -> if (forward) fullWidth / 4 else -fullWidth / 4 }
-                            ) + fadeIn(animationSpec = tween(220))
+                                initialOffsetX = { fullWidth -> if (forward) fullWidth / 5 else -fullWidth / 5 }
+                            ) + fadeIn(animationSpec = tween(160)) + scaleIn(
+                                initialScale = 0.985f,
+                                animationSpec = spring(stiffness = Spring.StiffnessMedium)
+                            )
                             val slideOut = slideOutHorizontally(
-                                animationSpec = tween(180),
-                                targetOffsetX = { fullWidth -> if (forward) -fullWidth / 5 else fullWidth / 5 }
-                            ) + fadeOut(animationSpec = tween(160))
+                                animationSpec = tween(130),
+                                targetOffsetX = { fullWidth -> if (forward) -fullWidth / 6 else fullWidth / 6 }
+                            ) + fadeOut(animationSpec = tween(120)) + scaleOut(
+                                targetScale = 0.985f,
+                                animationSpec = tween(130)
+                            )
                             slideIn togetherWith slideOut
                         },
                         label = "MainTabTransition"

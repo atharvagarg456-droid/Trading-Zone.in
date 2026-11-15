@@ -833,7 +833,19 @@ class TradingViewModel(
         opinionText: String,
         rating: Int = 5
     ) {
-        val profile = userProfile.value ?: return
+        val profile = userProfile.value ?: if (isUserAdmin.value) {
+            UserProfile(
+                userId = currentUserId,
+                email = PRIMARY_ADMIN_EMAIL,
+                fullName = "Atharva Garg (Owner)",
+                accountStatus = "APPROVED",
+                entitlementStatus = "PAID_ACTIVE",
+                validUntilMillis = System.currentTimeMillis() + 3650L * 86_400_000L
+            )
+        } else {
+            _statusMessage.value = "Syncing your profile, please retry in a moment."
+            return
+        }
         viewModelScope.launch {
             _isBusy.value = true
             try {

@@ -490,40 +490,51 @@ fun BroadcastStreamScreen(
                         val messageReceipts = receiptsByMessageId[message.id].orEmpty()
                         val msgTargetId = "msg_${message.id}"
 
-                        BroadcastMessageCard(
-                            message = message,
-                            isOpened = isOpened,
-                            isEligibleForTier = isEligibleForTier,
-                            seenByCount = messageReceipts.size,
-                            largeTextMode = largeTextMode,
-                            isAdmin = isAdmin,
-                            targetId = msgTargetId,
-                            reactions = emojiReactionsByTarget[msgTargetId].orEmpty(),
-                            myReactedKeys = myReactedKeys,
-                            onReact = { emoji -> onToggleReaction(msgTargetId, emoji) },
-                            onOpenEnvelope = { onMarkMessageOpened(message) },
-                            onUpgradePlanRequest = onNavigateToMembership,
-                            onInspectSeenBy = { inspectSeenByMessage = message },
-                            onClickQuotedReply = {
-                                val target = messages.find { it.id == message.replyToMessageId }
-                                if (target != null) {
-                                    previewQuotedMessage = target
-                                }
-                            },
-                            onExpandPhoto = {
-                                val idx = eligibleChartGallery.indexOfFirst { it.id == message.id }
-                                if (idx >= 0) {
-                                    swipeInitialIndex = idx
-                                    swipeGalleryItems = eligibleChartGallery
-                                } else {
-                                    swipeInitialIndex = 0
-                                    swipeGalleryItems = listOf(message.toSwipeableGalleryItem())
-                                }
-                            },
-                            onReply = { onReplyToMessageRequest(message) },
-                            onEdit = { onEditMessageRequest(message) },
-                            onDelete = { onDeleteMessageRequest(message.id) }
-                        )
+                        Box(
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = androidx.compose.animation.core.tween(160),
+                                fadeOutSpec = androidx.compose.animation.core.tween(120),
+                                placementSpec = spring(
+                                    dampingRatio = 0.85f,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
+                        ) {
+                            BroadcastMessageCard(
+                                message = message,
+                                isOpened = isOpened,
+                                isEligibleForTier = isEligibleForTier,
+                                seenByCount = messageReceipts.size,
+                                largeTextMode = largeTextMode,
+                                isAdmin = isAdmin,
+                                targetId = msgTargetId,
+                                reactions = emojiReactionsByTarget[msgTargetId].orEmpty(),
+                                myReactedKeys = myReactedKeys,
+                                onReact = { emoji -> onToggleReaction(msgTargetId, emoji) },
+                                onOpenEnvelope = { onMarkMessageOpened(message) },
+                                onUpgradePlanRequest = onNavigateToMembership,
+                                onInspectSeenBy = { inspectSeenByMessage = message },
+                                onClickQuotedReply = {
+                                    val target = messages.find { it.id == message.replyToMessageId }
+                                    if (target != null) {
+                                        previewQuotedMessage = target
+                                    }
+                                },
+                                onExpandPhoto = {
+                                    val idx = eligibleChartGallery.indexOfFirst { it.id == message.id }
+                                    if (idx >= 0) {
+                                        swipeInitialIndex = idx
+                                        swipeGalleryItems = eligibleChartGallery
+                                    } else {
+                                        swipeInitialIndex = 0
+                                        swipeGalleryItems = listOf(message.toSwipeableGalleryItem())
+                                    }
+                                },
+                                onReply = { onReplyToMessageRequest(message) },
+                                onEdit = { onEditMessageRequest(message) },
+                                onDelete = { onDeleteMessageRequest(message.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -622,6 +633,7 @@ private fun QuickBroadcastComposeDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = 460.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
