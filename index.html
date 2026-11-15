@@ -254,14 +254,15 @@
       display: none;
       flex-direction: column;
       gap: 14px;
-      animation: smoothSlide 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform, opacity;
+      animation: smoothSlide 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
     .screen.active {
       display: flex;
     }
     @keyframes smoothSlide {
-      from { opacity: 0; transform: translateY(10px) scale(0.99); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+      from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.992); }
+      to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
     }
     .card {
       background: var(--surface);
@@ -269,7 +270,8 @@
       border-radius: 18px;
       padding: 16px;
       text-align: left;
-      transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.18s ease, box-shadow 0.18s ease;
+      will-change: transform, opacity;
+      transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.16s ease, box-shadow 0.16s ease;
     }
     .card-pinned {
       background: rgba(245, 158, 11, 0.08);
@@ -460,6 +462,8 @@
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       z-index: 90;
       display: none;
       align-items: center;
@@ -468,6 +472,15 @@
     }
     .modal-backdrop.open {
       display: flex;
+      animation: fadeBackdrop 0.16s ease-out both;
+    }
+    @keyframes fadeBackdrop {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes modalPopIn {
+      from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.975); }
+      to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
     }
     .modal-card {
       background: var(--surface);
@@ -481,6 +494,8 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
+      will-change: transform, opacity;
+      animation: modalPopIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
     .qr-box {
       background: #fff;
@@ -643,15 +658,15 @@
       50% { opacity: 0.78; transform: scale(1.04) translateY(-4px); }
     }
     @keyframes cardSlideIn {
-      from { opacity: 0; transform: translateY(10px) scale(0.99); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+      from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.992); }
+      to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
     }
     .app-shell::before {
       content: "";
       position: fixed;
       top: -120px;
       left: 50%;
-      transform: translateX(-50%);
+      transform: translate3d(-50%, 0, 0);
       width: min(520px, 95vw);
       height: 220px;
       background: radial-gradient(circle, rgba(0,230,118,0.16) 0%, rgba(255,213,79,0.08) 45%, transparent 72%);
@@ -660,8 +675,8 @@
       animation: auroraPulse 6s ease-in-out infinite;
     }
     .card {
-      animation: cardSlideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      animation: cardSlideIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+      transition: transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.16s ease, box-shadow 0.16s ease;
     }
     .card:hover {
       border-color: rgba(0, 230, 118, 0.38);
@@ -1276,63 +1291,67 @@
       </button>
     </section>
 
-    <!-- MAIN TAB 2: COMMODITY SECTION (TRADE SIGNAL P&L BANNER + TELEGRAM EMOJI REACTIONS + ADMIN-ONLY DELETE) -->
+    <!-- MAIN TAB 2: COMMODITY SECTION (SEARCH, TOPIC FILTER, MODAL COMPOSER, TRADE SIGNAL P&L BANNER + REACTIONS) -->
     <section id="tabCommodity" class="screen">
+      <!-- Compact Search, Topic Filter & Quick Post Trigger -->
+      <div class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div>
+            <div class="card-title" style="margin-bottom:1px;">Commodity Desk &amp; Trade Room</div>
+            <div class="card-sub" id="commodityQuotaSubtitle">Synced live • Sent messages are permanent</div>
+          </div>
+          <span class="pill pill-emerald" id="commodityOnlineBadge">1 Active</span>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="commoditySearchInput" class="input" placeholder="Search Commodity messages or traders..." oninput="onCommoditySearchChange(this.value)" style="flex:1;" />
+          <button class="btn btn-primary" style="width:auto;padding:11px 16px;white-space:nowrap;" onclick="openCommodityComposerModal()">✏️ Post</button>
+        </div>
+
+        <div class="chip-row" id="commodityFilterChips" style="margin:0;padding-bottom:0;">
+          <button class="chip selected" onclick="selectCommodityFilter('All', this)">All</button>
+          <button class="chip" onclick="selectCommodityFilter('Gold / Silver', this)">Gold / Silver</button>
+          <button class="chip" onclick="selectCommodityFilter('Crude / NatGas', this)">Crude / NatGas</button>
+          <button class="chip" onclick="selectCommodityFilter('Nifty / BankNifty', this)">Nifty / BankNifty</button>
+          <button class="chip" onclick="selectCommodityFilter('Risk Control', this)">Risk Control</button>
+          <button class="chip" onclick="selectCommodityFilter('Trade Setup', this)">Trade Setup</button>
+        </div>
+      </div>
+
+      <!-- Collapsible Inline Admin Room Open/Lock & Daily Message Limit Bar -->
+      <details id="commodityAdminInlineBar" class="pro-accordion" style="display:none;border-color:rgba(16,185,129,0.45);background:rgba(16,185,129,0.08);">
+        <summary>🛡️ Admin Commodity Controls (Lock Room, Daily Limit &amp; Trade P&amp;L)</summary>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <div style="font-weight:800;font-size:13px;" id="inlineCommodityRoomStateTitle">Commodity Room: OPEN</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-primary" id="inlineCommodityToggleRoomBtn" style="width:auto;padding:7px 12px;font-size:12px;" onclick="toggleInlineCommodityRoomLock()">🔒 Lock Room</button>
+              <button class="btn btn-outline" style="width:auto;padding:7px 12px;font-size:12px;" onclick="openAdminPnlPrompt()">📈 Post P&amp;L</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-top:8px;border-top:1px solid var(--border);">
+            <span style="font-size:12px;font-weight:800;">Daily Msg Limit / User:</span>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <button class="chip" id="inlineLimChip1" onclick="selectInlineCommodityLimit(1)">1</button>
+              <button class="chip" id="inlineLimChip2" onclick="selectInlineCommodityLimit(2)">2</button>
+              <button class="chip" id="inlineLimChip3" onclick="selectInlineCommodityLimit(3)">3</button>
+              <button class="chip" id="inlineLimChip5" onclick="selectInlineCommodityLimit(5)">5</button>
+              <button class="chip" id="inlineLimChip10" onclick="selectInlineCommodityLimit(10)">10</button>
+              <button class="btn btn-primary" style="width:auto;padding:6px 12px;font-size:12px;" onclick="applyInlineCommodityLimit()">✓ Apply</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
       <!-- Pinned Top Banner: Trade Signal Profit / Loss (As Per Broadcast Call) with Telegram Emoji Reactions -->
       <div id="commodityTodayPnlBanner"></div>
 
-      <!-- Inline Admin Room Open/Lock & Daily Message Limit Bar (Right Inside Commodity Tab) -->
-      <div id="commodityAdminInlineBar" class="card" style="display:none;border-color:rgba(16,185,129,0.45);background:rgba(16,185,129,0.08);">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-          <div>
-            <span class="pill pill-emerald">🛡️ ADMIN INLINE COMMODITY CONTROLS</span>
-            <div style="font-weight:800;font-size:14px;margin-top:4px;" id="inlineCommodityRoomStateTitle">Commodity Room: OPEN</div>
-          </div>
-          <button class="btn btn-primary" id="inlineCommodityToggleRoomBtn" style="width:auto;padding:7px 14px;font-size:12px;" onclick="toggleInlineCommodityRoomLock()">🔒 Lock Room</button>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-          <span style="font-size:12px;font-weight:800;">Daily Msg Limit / User:</span>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <button class="chip" id="inlineLimChip1" onclick="selectInlineCommodityLimit(1)">1</button>
-            <button class="chip" id="inlineLimChip2" onclick="selectInlineCommodityLimit(2)">2</button>
-            <button class="chip" id="inlineLimChip3" onclick="selectInlineCommodityLimit(3)">3</button>
-            <button class="chip" id="inlineLimChip5" onclick="selectInlineCommodityLimit(5)">5</button>
-            <button class="chip" id="inlineLimChip10" onclick="selectInlineCommodityLimit(10)">10</button>
-            <button class="btn btn-primary" style="width:auto;padding:6px 12px;font-size:12px;" onclick="applyInlineCommodityLimit()">✓ Apply</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Strict No-Refund Identity Warning -->
-      <div class="card" style="border-color:rgba(245,158,11,0.5);background:rgba(245,158,11,0.08);">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
-          <span class="pill pill-amber">⚠️ STRICT COMMODITY RULE</span>
-          <span class="pill pill-emerald" id="commodityOnlineBadge">1 Active</span>
-        </div>
-        <p class="card-sub" style="margin-top:6px;color:var(--text);">
-          Once sent, <strong>normal users cannot delete messages</strong> (only Admin can delete). Sharing phone numbers, emails, or UPI IDs is blocked automatically. Tap emojis below any trade signal or message to react like Telegram!
-        </p>
-      </div>
-
-      <!-- Commodity Composer -->
-      <div class="card" id="commodityComposerCard">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-          <div class="card-title">Post to Commodity Stream</div>
-          <button id="adminQuickPnlBtn" class="btn btn-outline" style="display:none;width:auto;padding:6px 10px;font-size:11px;" onclick="openAdminPnlPrompt()">📈 Post Trade Signal P&amp;L</button>
-        </div>
-        <div class="chip-row" style="margin:8px 0;">
-          <button class="chip selected" onclick="selectCommodityTag('Gold / Silver', this)">Gold / Silver</button>
-          <button class="chip" onclick="selectCommodityTag('Crude / NatGas', this)">Crude / NatGas</button>
-          <button class="chip" onclick="selectCommodityTag('Nifty / BankNifty', this)">Nifty / BankNifty</button>
-          <button class="chip" onclick="selectCommodityTag('Trade Setup', this)">Trade Setup</button>
-        </div>
-        <textarea id="commodityInput" class="textarea" placeholder="Share your commodity market view (Cannot be deleted by user once sent)..."></textarea>
-        <div style="margin-top:10px;">
-          <button class="btn btn-primary" onclick="submitCommodityPost()">Post Commodity Message</button>
-        </div>
-      </div>
-
       <div id="commodityList" style="display:flex;flex-direction:column;gap:12px;"></div>
+
+      <!-- Floating New Commodity Post Button (Always reachable, never pushed off-screen) -->
+      <button id="webCommodityComposeFab" onclick="openCommodityComposerModal()" style="display:none;position:fixed;right:20px;bottom:84px;z-index:90;background:linear-gradient(135deg,#00E676,#10B981);color:#04120B;border:none;border-radius:999px;padding:13px 20px;font-weight:900;font-size:14px;box-shadow:0 10px 28px rgba(0,230,118,0.4);cursor:pointer;align-items:center;gap:8px;">
+        <span>✏️</span><span>New Post</span>
+      </button>
     </section>
 
     <!-- MAIN TAB 3: MULTI-PLAN QR MEMBERSHIP (ADMIN BYPASS + INTERACTIVE PLAN STUDIO) -->
@@ -1802,6 +1821,35 @@
   </div>
 </div>
 
+<!-- MODAL: KEYBOARD-SAFE COMMODITY POST COMPOSER (TOPIC TAG & SEND NEVER PUSHED OFF-SCREEN) -->
+<div id="commodityComposerModal" class="modal-backdrop" onclick="if(event.target===this)closeCommodityComposerModal()">
+  <div class="modal-card" id="commodityComposerCard" style="max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div>
+        <span class="pill pill-emerald">💬 NEW COMMODITY POST</span>
+        <div class="card-title" style="margin-top:4px;">Post to Commodity Stream</div>
+      </div>
+      <button class="icon-btn" onclick="closeCommodityComposerModal()">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);">
+      Once sent, <strong>normal users cannot delete messages</strong>. Phone numbers &amp; emails are blocked automatically.
+    </div>
+    <div style="font-size:12px;font-weight:800;color:var(--emerald);">Choose Topic Tag:</div>
+    <div class="chip-row" id="commodityModalTagChips" style="margin:0;">
+      <button class="chip selected" onclick="selectCommodityTag('Gold / Silver', this)">Gold / Silver</button>
+      <button class="chip" onclick="selectCommodityTag('Crude / NatGas', this)">Crude / NatGas</button>
+      <button class="chip" onclick="selectCommodityTag('Nifty / BankNifty', this)">Nifty / BankNifty</button>
+      <button class="chip" onclick="selectCommodityTag('Risk Control', this)">Risk Control</button>
+      <button class="chip" onclick="selectCommodityTag('Trade Setup', this)">Trade Setup</button>
+    </div>
+    <textarea id="commodityInput" class="textarea" placeholder="Write your Commodity market view or analysis..."></textarea>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="closeCommodityComposerModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCommodityPost()">🚀 Send to Commodity</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: ANTI-SCREENSHOT SECURITY WARNING (STRIKE 1 WARNING / STRIKE 2 24H AUTO-BAN) -->
 <div id="screenshotWarningModal" class="modal-backdrop" onclick="if(event.target===this)closeScreenshotWarningModal()">
   <div class="modal-card" style="border-color:var(--crimson);text-align:center;">
@@ -2083,7 +2131,8 @@
     plan3QrCodeBase64: "",
     plan3Enabled: true,
     benefits: [],
-    commodityChatLocked: false
+    commodityChatLocked: false,
+    dailyReviewLimitPerUser: 2
   };
   let broadcastMessages = [];
   let communityReviews = [];
@@ -2094,7 +2143,9 @@
   let allDevices = [];
   let moderationAlerts = [];
   let isSessionUnlocked = false;
-  let selectedCommodityTag = "MCX GOLD / SILVER";
+  let selectedCommodityTag = "Gold / Silver";
+  let selectedCommodityFilter = "All";
+  let commoditySearchText = "";
   let selectedPlanSlot = 1;
   let selectedSetupMaxDevices = 2;
   let uploadedPhotos = { reg: "", payment: "", profileEdit: "", adminChart: "" };
@@ -2522,6 +2573,13 @@
     const email = currentUser.email.toLowerCase();
     return email === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
       (adminSettings.adminEmails || []).some(e => e.toLowerCase() === email);
+  }
+
+  function getBoundedAdmins() {
+    const raw = [PRIMARY_ADMIN_EMAIL, ...(adminSettings.adminEmails || [])]
+      .map(e => String(e || "").trim().substring(0, 200))
+      .filter(Boolean);
+    return [...new Set(raw)].slice(0, 3);
   }
 
   function isRequestCrossDeviceOtp(r) {
@@ -2955,9 +3013,8 @@
       pendingQuickAuthEmailDoc = existingUserDoc;
       pendingQuickAuthCode = code4;
 
-      const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
-        ? adminSettings.adminEmails
-        : [PRIMARY_ADMIN_EMAIL];
+      const activeAdmins = getBoundedAdmins();
+      const otpRef = `LOGIN_OTP|${code4}|${currentDeviceModel.replace(/\|/g, " ").substring(0, 35)}|${deviceId}`.substring(0, 100);
 
       await addDoc(collection(db, "access_requests"), {
         userId: uid,
@@ -2971,7 +3028,9 @@
         planName: `2-Step Quick Login Code (${currentDeviceModel})`.substring(0, 120),
         amountInr: 0,
         validityDays: 1,
-        utrNumber: `LOGIN_OTP|${code4}|${currentDeviceModel.replace(/\|/g, " ").substring(0, 35)}|${deviceId}`.substring(0, 100),
+        utrReference: otpRef,
+        utrNumber: otpRef,
+        paymentScreenshotBase64: "",
         paymentProofBase64: "",
         status: "PENDING",
         adminNote: "",
@@ -3337,9 +3396,8 @@
     if (!forceNew && activeWebCrossDeviceCode) return;
     const code4 = String(Math.floor(1000 + Math.random() * 9000));
     activeWebCrossDeviceCode = code4;
-    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
-      ? adminSettings.adminEmails
-      : [PRIMARY_ADMIN_EMAIL];
+    const activeAdmins = getBoundedAdmins();
+    const otpRef = `LOGIN_OTP|${code4}|${currentDeviceModel.replace(/\|/g, " ").substring(0, 35)}|${deviceId}`.substring(0, 100);
     try {
       await addDoc(collection(db, "access_requests"), {
         userId: currentUser.uid,
@@ -3353,7 +3411,9 @@
         planName: `2-Step Quick Login Code (${currentDeviceModel})`.substring(0, 120),
         amountInr: 0,
         validityDays: 1,
-        utrNumber: `LOGIN_OTP|${code4}|${currentDeviceModel.replace(/\|/g, " ").substring(0, 35)}|${deviceId}`.substring(0, 100),
+        utrReference: otpRef,
+        utrNumber: otpRef,
+        paymentScreenshotBase64: "",
         paymentProofBase64: "",
         status: "PENDING",
         adminNote: "",
@@ -3371,9 +3431,8 @@
   // Approve another device's 4-Digit Quick Login Request from this already-unlocked device
   window.approveWebCrossDeviceOtp = async function(reqId, code4) {
     if (!currentUser) return;
-    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
-      ? adminSettings.adminEmails
-      : [PRIMARY_ADMIN_EMAIL];
+    const activeAdmins = getBoundedAdmins();
+    const ackRef = `LOGIN_OTP_ACK|${code4}|${reqId || ""}`.substring(0, 100);
     try {
       if (isUserAdmin() && reqId) {
         await updateDoc(doc(db, "access_requests", reqId), {
@@ -3394,7 +3453,9 @@
         planName: "Approved 2-Step Quick Login",
         amountInr: 0,
         validityDays: 1,
-        utrNumber: `LOGIN_OTP_ACK|${code4}|${reqId || ""}`.substring(0, 100),
+        utrReference: ackRef,
+        utrNumber: ackRef,
+        paymentScreenshotBase64: "",
         paymentProofBase64: "",
         status: "PENDING",
         adminNote: "",
@@ -3464,9 +3525,8 @@
       showToast("Verification request already pending on Official Android App!");
       return;
     }
-    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
-      ? adminSettings.adminEmails
-      : [PRIMARY_ADMIN_EMAIL];
+    const activeAdmins = getBoundedAdmins();
+    const webAuthRef = `WEB_AUTH_${deviceId}`.substring(0, 100);
     try {
       await addDoc(collection(db, "access_requests"), {
         userId: currentUser.uid,
@@ -3480,7 +3540,9 @@
         planName: `Admin Web Login (${currentDeviceModel})`.substring(0, 120),
         amountInr: 0,
         validityDays: 1,
-        utrNumber: `WEB_AUTH_${deviceId}`.substring(0, 100),
+        utrReference: webAuthRef,
+        utrNumber: webAuthRef,
+        paymentScreenshotBase64: "",
         paymentProofBase64: "",
         status: "PENDING",
         adminNote: "",
@@ -3702,9 +3764,8 @@
   window.submitWebUnbanAppeal = async function() {
     if (!currentUser) return;
     const reason = (document.getElementById("unbanAppealReasonInput")?.value || "Banned by mistake — requesting a second chance.").trim();
-    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
-      ? adminSettings.adminEmails
-      : [PRIMARY_ADMIN_EMAIL];
+    const activeAdmins = getBoundedAdmins();
+    const appealRef = `UNBAN_APPEAL|${reason.replace(/\|/g, " ").substring(0, 80)}`.substring(0, 100);
     try {
       await addDoc(collection(db, "access_requests"), {
         userId: currentUser.uid,
@@ -3718,7 +3779,9 @@
         planName: `Second-Chance Unban Appeal (${currentDeviceModel})`.substring(0, 120),
         amountInr: 0,
         validityDays: 7,
-        utrNumber: `UNBAN_APPEAL|${reason.replace(/\|/g, " ").substring(0, 80)}`.substring(0, 100),
+        utrReference: appealRef,
+        utrNumber: appealRef,
+        paymentScreenshotBase64: "",
         paymentProofBase64: "",
         status: "PENDING",
         adminNote: "",
@@ -4222,11 +4285,58 @@
     document.getElementById("seenByModal").classList.remove("open");
   };
 
-  // Commodity Stream (Trade Signal P&L As Per Broadcast Call + Telegram Reactions + Admin-Only Delete)
+  // Commodity Stream (Search + Topic Filter + Modal Composer + Trade Signal P&L + Telegram Reactions + Admin-Only Delete)
+  window.openCommodityComposerModal = function() {
+    if (!isEntitled()) {
+      showToast("Active subscription or 7-Day Free Trial required to post in Commodity");
+      return;
+    }
+    if (userProfile?.isCommodityMuted && !isUserAdmin()) {
+      showToast("Your Commodity messaging privilege has been muted by Admin.");
+      return;
+    }
+    if (pricingConfig.commodityChatLocked && !isUserAdmin()) {
+      showToast("Commodity chat is currently paused by Admin.");
+      return;
+    }
+    if (!isUserAdmin()) {
+      const lim = Math.max(1, Number(pricingConfig.dailyReviewLimitPerUser || 2));
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const usedToday = userProfile?.lastReviewDate === todayKey ? Number(userProfile?.dailyReviewCount || 0) : 0;
+      if (usedToday >= lim) {
+        showToast(`Daily limit reached (${usedToday}/${lim} posts today). Try again tomorrow or request Admin reset.`);
+        return;
+      }
+    }
+    document.getElementById("commodityComposerModal")?.classList.add("open");
+    setTimeout(() => document.getElementById("commodityInput")?.focus(), 80);
+  };
+  window.closeCommodityComposerModal = function() {
+    document.getElementById("commodityComposerModal")?.classList.remove("open");
+  };
+
+  window.onCommoditySearchChange = function(val) {
+    commoditySearchText = String(val || "").trim();
+    renderCommodityStream();
+  };
+
+  window.selectCommodityFilter = function(topic, btn) {
+    selectedCommodityFilter = topic || "All";
+    document.querySelectorAll("#commodityFilterChips .chip").forEach(c => c.classList.remove("selected"));
+    if (btn) btn.classList.add("selected");
+    if (topic && topic !== "All") {
+      selectedCommodityTag = topic;
+      document.querySelectorAll("#commodityModalTagChips .chip").forEach(c => {
+        c.classList.toggle("selected", c.textContent.trim() === topic);
+      });
+    }
+    renderCommodityStream();
+  };
+
   window.selectCommodityTag = function(tag, btn) {
     selectedCommodityTag = tag;
-    document.querySelectorAll("#commodityComposerCard .chip").forEach(c => c.classList.remove("selected"));
-    btn.classList.add("selected");
+    document.querySelectorAll("#commodityModalTagChips .chip").forEach(c => c.classList.remove("selected"));
+    if (btn) btn.classList.add("selected");
   };
 
   function containsPersonalContactInfo(text) {
@@ -4249,12 +4359,22 @@
       showToast("Commodity chat is currently paused by Admin.");
       return;
     }
-    const text = document.getElementById("commodityInput").value.trim();
-    if (!text) return;
+    const lim = Math.max(1, Number(pricingConfig.dailyReviewLimitPerUser || 2));
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const usedToday = userProfile?.lastReviewDate === todayKey ? Number(userProfile?.dailyReviewCount || 0) : 0;
+    if (!isUserAdmin() && usedToday >= lim) {
+      showToast(`Daily limit reached (${usedToday}/${lim} posts today).`);
+      return;
+    }
 
-    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
-      ? adminSettings.adminEmails
-      : [PRIMARY_ADMIN_EMAIL];
+    const inputEl = document.getElementById("commodityInput");
+    const text = (inputEl?.value || "").trim();
+    if (!text) {
+      showToast("Please enter your Commodity message first");
+      return;
+    }
+
+    const activeAdmins = getBoundedAdmins();
 
     if (!isUserAdmin() && containsPersonalContactInfo(text)) {
       window.playWebSound("alert");
@@ -4264,14 +4384,13 @@
           userId: currentUser.uid,
           userEmail: (currentUser.email || "").substring(0, 200),
           userName: (userProfile?.fullName || currentUser.email || "Member").substring(0, 120),
-          userPhone: (userProfile?.phoneNumber || "").substring(0, 40),
+          userPhotoBase64: (userProfile?.photoBase64 || "").substring(0, 450000),
           deviceId,
           ipAddress: "Web-Client",
-          tradeMessageId: "GENERAL",
           tradeMessageTitle: "Commodity Discussion",
           originalUneditedText: text.substring(0, 2000),
-          filteredPublicText: "[BLOCKED PERSONAL CONTACT INFO]",
-          detectedWords: ["Phone/Email/Personal ID"],
+          blurredText: "[BLOCKED PERSONAL CONTACT INFO]",
+          detectedWords: "Phone/Email/Personal ID",
           status: "OPEN",
           adminEmails: activeAdmins,
           createdAt: serverTimestamp(),
@@ -4285,12 +4404,12 @@
     try {
       await addDoc(collection(db, "community_reviews"), {
         userId: currentUser.uid,
-        userName: (userProfile?.fullName || "Member").substring(0, 120),
+        userName: (userProfile?.fullName || currentUser.email || "Member").substring(0, 120),
         userPhotoBase64: (userProfile?.photoBase64 || "").substring(0, 450000),
-        tradeMessageId: "GENERAL",
+        tradeMessageId: "commodity_general",
         tradeMessageTitle: "Commodity Discussion",
         tradeRiskLevel: "MEDIUM",
-        topicTag: selectedCommodityTag.substring(0, 80),
+        topicTag: (selectedCommodityTag || "Gold / Silver").substring(0, 80),
         publicContent: text.substring(0, 2000),
         rating: 5,
         hasBlurredWords: false,
@@ -4299,7 +4418,17 @@
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      document.getElementById("commodityInput").value = "";
+      if (!isUserAdmin() && userProfile?.id) {
+        try {
+          await updateDoc(doc(db, "users", currentUser.uid), {
+            dailyReviewCount: usedToday + 1,
+            lastReviewDate: todayKey,
+            updatedAt: serverTimestamp()
+          });
+        } catch (_) {}
+      }
+      if (inputEl) inputEl.value = "";
+      closeCommodityComposerModal();
       window.playWebSound("success");
       showToast("Commodity message posted!");
     } catch (err) {
@@ -4363,11 +4492,24 @@
     const listEl = document.getElementById("commodityList");
     if (!listEl) return;
 
-    // Render Pinned Top Trade Signal P&L Banner (As Per Broadcast Call)
+    const quotaSub = document.getElementById("commodityQuotaSubtitle");
+    if (quotaSub) {
+      const lim = Math.max(1, Number(pricingConfig.dailyReviewLimitPerUser || 2));
+      if (isUserAdmin()) {
+        quotaSub.textContent = `Owner Mode • Room ${pricingConfig.commodityChatLocked ? "Locked" : "Open"} (${lim}/day limit)`;
+      } else {
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const usedToday = userProfile?.lastReviewDate === todayKey ? Number(userProfile?.dailyReviewCount || 0) : 0;
+        const left = Math.max(0, lim - usedToday);
+        quotaSub.textContent = `${left}/${lim} posts left today • Sent messages are permanent`;
+      }
+    }
+
+    // Hide P&L banner temporarily while actively searching so search results sit right below search bar
     const pnlBannerEl = document.getElementById("commodityTodayPnlBanner");
     if (pnlBannerEl) {
       const { todayProfit } = parsePricingMeta();
-      if (todayProfit.enabled || isUserAdmin()) {
+      if (!commoditySearchText && (todayProfit.enabled || isUserAdmin())) {
         pnlBannerEl.style.display = "block";
         const isLoss = !todayProfit.isProfit;
         pnlBannerEl.innerHTML = `
@@ -4393,9 +4535,20 @@
       }
     }
 
-    const visibleMessages = communityReviews.filter(r => r.topicTag !== "REACTION");
+    const q = commoditySearchText.toLowerCase();
+    const visibleMessages = communityReviews.filter(r => {
+      if (r.topicTag === "REACTION") return false;
+      const isPnl = r.topicTag === "OWNER_PNL" && String(r.tradeMessageTitle || "").startsWith("PROFIT_CARD|");
+      const topicOk = selectedCommodityFilter === "All" || isPnl ||
+        String(r.topicTag || "").toLowerCase() === selectedCommodityFilter.toLowerCase() ||
+        String(r.tradeMessageTitle || "").toLowerCase().includes(selectedCommodityFilter.toLowerCase());
+      if (!topicOk) return false;
+      if (!q) return true;
+      const hay = `${r.publicContent || r.publicOpinionText || ""} ${r.userName || r.userAlias || ""} ${r.topicTag || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
     if (visibleMessages.length === 0) {
-      listEl.innerHTML = `<div class="card"><div class="card-sub">No Commodity messages yet. Start the discussion above!</div></div>`;
+      listEl.innerHTML = `<div class="card"><div class="card-sub">${q ? "No Commodity messages matched your search." : "No Commodity messages yet. Tap New Post to start!"}</div></div>`;
       return;
     }
     listEl.innerHTML = "";
@@ -4482,9 +4635,7 @@
   // Plans & Free Trial + Admin Plan Studio Bypass
   window.requestFreeTrial = async function() {
     if (!currentUser || !userProfile) return;
-    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
-      ? adminSettings.adminEmails
-      : [PRIMARY_ADMIN_EMAIL];
+    const activeAdmins = getBoundedAdmins();
     try {
       await addDoc(collection(db, "access_requests"), {
         userId: currentUser.uid,
@@ -4498,7 +4649,9 @@
         planName: "7-Day Free Trial",
         amountInr: 0,
         validityDays: 7,
+        utrReference: "FREE_TRIAL_1_WEEK",
         utrNumber: "FREE_TRIAL_1_WEEK",
+        paymentScreenshotBase64: "",
         paymentProofBase64: "",
         status: "PENDING",
         adminNote: "",
@@ -4619,7 +4772,7 @@
       if (buyerBox) buyerBox.style.display = "none";
       if (adminBox) {
         adminBox.style.display = "flex";
-        const dailyLimit = Number(adminSettings.dailyReviewLimitPerUser || 1);
+        const dailyLimit = Number(pricingConfig.dailyReviewLimitPerUser || 2);
         adminBox.innerHTML = `
           <div class="card" style="border-color:var(--emerald);background:var(--emerald-dim);">
             <span class="pill pill-emerald">👑 OWNER LIFETIME VIP MASTER ACCESS</span>
@@ -4733,9 +4886,8 @@
     const chosen = activePlans.find(p => p.slot === selectedPlanSlot) || activePlans[0];
     if (!chosen) return;
 
-    const activeAdmins = (adminSettings.adminEmails && adminSettings.adminEmails.length > 0)
-      ? adminSettings.adminEmails
-      : [PRIMARY_ADMIN_EMAIL];
+    const activeAdmins = getBoundedAdmins();
+    const proofImg = (uploadedPhotos.payment || "").substring(0, 500000);
 
     try {
       await addDoc(collection(db, "access_requests"), {
@@ -4750,8 +4902,10 @@
         planName: chosen.name.substring(0, 120),
         amountInr: Number(chosen.priceInr || 2499),
         validityDays: Number(chosen.validityDays || 30),
+        utrReference: utr.substring(0, 100),
         utrNumber: utr.substring(0, 100),
-        paymentProofBase64: (uploadedPhotos.payment || "").substring(0, 500000),
+        paymentScreenshotBase64: proofImg,
+        paymentProofBase64: proofImg,
         status: "PENDING",
         adminNote: "",
         adminEmails: activeAdmins,
@@ -5066,13 +5220,13 @@
 
   window.adminApplyDailyLimitNow = async function() {
     if (!isUserAdmin()) return;
-    const limitVal = Math.min(50, Math.max(1, parseInt(document.getElementById("adminDailyMsgLimitInput")?.value || "1", 10) || 1));
+    const limitVal = Math.min(50, Math.max(1, parseInt(document.getElementById("adminDailyMsgLimitInput")?.value || "2", 10) || 2));
     try {
-      await setDoc(doc(db, "app_config", "admin_settings"), {
-        ...adminSettings,
+      await updateDoc(doc(db, "app_config", "pricing"), {
         dailyReviewLimitPerUser: limitVal,
         updatedAt: serverTimestamp()
-      }, { merge: true });
+      });
+      pricingConfig.dailyReviewLimitPerUser = limitVal;
       window.playWebSound("BUY");
       showToast(`✅ Applied Daily Commodity Message Limit: ${limitVal} msg/day!`);
     } catch (e) {
@@ -5082,18 +5236,15 @@
 
   window.adminApplyPlansAndLimitFromStudio = async function() {
     if (!isUserAdmin()) return;
-    const limitVal = Math.min(50, Math.max(1, parseInt(document.getElementById("studioDailyLimitInput")?.value || "1", 10) || 1));
+    const limitVal = Math.min(50, Math.max(1, parseInt(document.getElementById("studioDailyLimitInput")?.value || "2", 10) || 2));
     try {
-      await setDoc(doc(db, "app_config", "admin_settings"), {
-        ...adminSettings,
-        dailyReviewLimitPerUser: limitVal,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
       const updatedBenefits = buildBenefitsWithUpdatedMeta({});
       await updateDoc(doc(db, "app_config", "pricing"), {
+        dailyReviewLimitPerUser: limitVal,
         benefits: updatedBenefits,
         updatedAt: serverTimestamp()
       });
+      pricingConfig.dailyReviewLimitPerUser = limitVal;
       window.playWebSound("BUY");
       showToast(`✅ Applied Active Plans & Daily Message Limit (${limitVal}/day)!`);
     } catch (e) {
@@ -5484,10 +5635,10 @@
             updatedAt: serverTimestamp()
           });
         }
-        const userAlerts = moderationAlerts.filter(a => a.userId === uid && a.status !== "UNBANNED_SECOND_CHANCE");
+        const userAlerts = moderationAlerts.filter(a => a.userId === uid && a.status !== "RESOLVED");
         for (const a of userAlerts) {
           await updateDoc(doc(db, "moderation_alerts", a.id), {
-            status: "UNBANNED_SECOND_CHANCE",
+            status: "RESOLVED",
             updatedAt: serverTimestamp()
           });
         }
@@ -5640,15 +5791,22 @@
       const streamActive = document.getElementById("tabStream")?.classList.contains("active");
       fab.style.display = (isAdmin && streamActive) ? "inline-flex" : "none";
     }
+    const commodityFab = document.getElementById("webCommodityComposeFab");
+    if (commodityFab) {
+      const commodityActive = document.getElementById("tabCommodity")?.classList.contains("active");
+      const canPostCom = isAdmin || (isEntitled() && !userProfile?.isCommodityMuted && !pricingConfig.commodityChatLocked);
+      commodityFab.style.display = (commodityActive && canPostCom) ? "inline-flex" : "none";
+    }
     const inlineBar = document.getElementById("commodityAdminInlineBar");
     if (inlineBar) {
       inlineBar.style.display = isAdmin ? "block" : "none";
-      const isOpen = communitySettings.isOpen !== false;
+      const isOpen = !pricingConfig.commodityChatLocked;
       const titleEl = document.getElementById("inlineCommodityRoomStateTitle");
       const btnEl = document.getElementById("inlineCommodityToggleRoomBtn");
       if (titleEl) titleEl.textContent = isOpen ? "Commodity Room: OPEN (Members Can Post)" : "Commodity Room: LOCKED (Admin Only)";
       if (btnEl) btnEl.textContent = isOpen ? "🔒 Lock Room" : "🔓 Open Room";
-      const curLim = Number(communitySettings.dailyMessageLimitPerUser || 2);
+      const curLim = Number(pricingConfig.dailyReviewLimitPerUser || 2);
+      selectedInlineLimitVal = curLim;
       [1, 2, 3, 5, 10].forEach(n => {
         const chip = document.getElementById("inlineLimChip" + n);
         if (chip) chip.classList.toggle("selected", n === curLim);
@@ -5657,7 +5815,7 @@
     const hubAdmin = document.getElementById("telegramHubAdminSection");
     if (hubAdmin) hubAdmin.style.display = isAdmin ? "flex" : "none";
   }
-  setInterval(syncAdminFloatingAndInlineControls, 900);
+  setInterval(syncAdminFloatingAndInlineControls, 600);
 
   window.openTelegramQuickHub = function() {
     syncAdminFloatingAndInlineControls();
@@ -5696,24 +5854,36 @@
       showToast("Enter headline and trade message");
       return;
     }
-    const now = Date.now();
-    const id = "bc_" + now;
-    await setDoc(doc(db, "broadcast_messages", id), {
-      id,
-      title: `[${quickBcSelectedSignal}] ${title}`,
-      body,
-      SignalType: quickBcSelectedSignal,
-      targetMembershipTier: tier,
-      imageBase64: "",
-      authorEmail: currentUser?.email || "Owner Admin",
-      createdAtMillis: now,
-      createdAt: serverTimestamp()
-    });
-    document.getElementById("quickBcTitleInput").value = "";
-    document.getElementById("quickBcBodyInput").value = "";
-    closeQuickBroadcastComposeModal();
-    window.playWebSound(quickBcSelectedSignal);
-    showToast("🚀 Trade Broadcast published!");
+    const encodedLinkTitle = `__TIER__:${tier}|__SIG__:${quickBcSelectedSignal}|`.substring(0, 195);
+    try {
+      await addDoc(collection(db, "broadcast_messages"), {
+        title: title.substring(0, 200),
+        content: body.substring(0, 5000),
+        category: "NONE",
+        riskLevel: "MEDIUM",
+        markedPhotoBase64: "",
+        linkUrl: "",
+        linkTitle: encodedLinkTitle,
+        isPinned: false,
+        isEdited: false,
+        replyToMessageId: "",
+        replyToTitle: "",
+        replyToSnippet: "",
+        replyToRiskLevel: "NONE",
+        authorId: currentUser.uid,
+        authorName: (userProfile?.fullName || "Atharva Garg").substring(0, 120),
+        visibility: "VERIFIED_MEMBERS",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      document.getElementById("quickBcTitleInput").value = "";
+      document.getElementById("quickBcBodyInput").value = "";
+      closeQuickBroadcastComposeModal();
+      window.playWebSound(quickBcSelectedSignal);
+      showToast("🚀 Trade Broadcast published!");
+    } catch (e) {
+      showToast(e?.message || "Failed to publish broadcast");
+    }
   };
 
   window.selectInlineCommodityLimit = function(n) {
@@ -5725,24 +5895,33 @@
   };
   window.applyInlineCommodityLimit = async function() {
     if (!isUserAdmin()) return;
-    await setDoc(doc(db, "app_config", "community_settings"), {
-      isOpen: communitySettings.isOpen !== false,
-      dailyMessageLimitPerUser: Number(selectedInlineLimitVal || 2),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    window.playWebSound("success");
-    showToast(`✓ Daily limit set to ${selectedInlineLimitVal} messages/day!`);
+    const lim = Math.min(50, Math.max(1, Number(selectedInlineLimitVal || 2)));
+    try {
+      await updateDoc(doc(db, "app_config", "pricing"), {
+        dailyReviewLimitPerUser: lim,
+        updatedAt: serverTimestamp()
+      });
+      pricingConfig.dailyReviewLimitPerUser = lim;
+      window.playWebSound("success");
+      showToast(`✓ Daily limit set to ${lim} messages/day!`);
+    } catch (e) {
+      showToast(e?.message || "Failed to update daily limit");
+    }
   };
   window.toggleInlineCommodityRoomLock = async function() {
     if (!isUserAdmin()) return;
-    const nextOpen = communitySettings.isOpen === false;
-    await setDoc(doc(db, "app_config", "community_settings"), {
-      isOpen: nextOpen,
-      dailyMessageLimitPerUser: Number(communitySettings.dailyMessageLimitPerUser || 2),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    window.playWebSound("success");
-    showToast(nextOpen ? "🔓 Commodity Room OPENED!" : "🔒 Commodity Room LOCKED!");
+    const nextLocked = !pricingConfig.commodityChatLocked;
+    try {
+      await updateDoc(doc(db, "app_config", "pricing"), {
+        commodityChatLocked: nextLocked,
+        updatedAt: serverTimestamp()
+      });
+      pricingConfig.commodityChatLocked = nextLocked;
+      window.playWebSound("success");
+      showToast(nextLocked ? "🔒 Commodity Room LOCKED!" : "🔓 Commodity Room OPENED!");
+    } catch (e) {
+      showToast(e?.message || "Failed to update room lock");
+    }
   };
 
   window.jumpToAdminApprovals = function() {
@@ -5791,6 +5970,7 @@
     const alertId = "ss_alert_" + uid + "_" + now;
     const titleEl = document.getElementById("screenshotWarningTitle");
     const bodyEl = document.getElementById("screenshotWarningBody");
+    const activeAdmins = getBoundedAdmins();
 
     if (strikes === 1) {
       if (titleEl) titleEl.textContent = "⚠️ Warning (Strike 1 of 2): Screenshots Prohibited!";
@@ -5799,16 +5979,20 @@
       window.playWebSound("alert");
       try {
         await setDoc(doc(db, "moderation_alerts", alertId), {
-          id: alertId,
           userId: uid,
-          userEmail: currentUser.email || "",
-          userName: userProfile?.fullName || currentUser.email || "Member",
-          deviceId: currentDeviceId,
+          userEmail: (currentUser.email || userProfile?.email || "").substring(0, 200),
+          userName: (userProfile?.fullName || currentUser.email || "Member").substring(0, 120),
+          userPhotoBase64: (userProfile?.photoBase64 || "").substring(0, 450000),
+          deviceId,
+          ipAddress: `Web (${currentDeviceModel})`.substring(0, 100),
+          tradeMessageTitle: "Anti-Screenshot Guard",
           originalUneditedText: "Attempted screenshot of trade positions (Strike 1 Warning Issued)",
-          detectedWords: ["SCREENSHOT_ATTEMPT_STRIKE_1"],
-          status: "OPEN_WARNING",
-          createdAtMillis: now,
-          createdAt: serverTimestamp()
+          blurredText: "[SCREENSHOT ATTEMPT BLOCKED — STRIKE 1 WARNING]",
+          detectedWords: "SCREENSHOT_ATTEMPT_STRIKE_1",
+          status: "OPEN",
+          adminEmails: activeAdmins,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         });
       } catch (_) {}
     } else {
@@ -5819,25 +6003,29 @@
       window.playWebSound("alert");
       try {
         await setDoc(doc(db, "moderation_alerts", alertId), {
-          id: alertId,
           userId: uid,
-          userEmail: currentUser.email || "",
-          userName: userProfile?.fullName || currentUser.email || "Member",
-          deviceId: currentDeviceId,
+          userEmail: (currentUser.email || userProfile?.email || "").substring(0, 200),
+          userName: (userProfile?.fullName || currentUser.email || "Member").substring(0, 120),
+          userPhotoBase64: (userProfile?.photoBase64 || "").substring(0, 450000),
+          deviceId,
+          ipAddress: `Web (${currentDeviceModel})`.substring(0, 100),
+          tradeMessageTitle: "Anti-Screenshot Guard",
           originalUneditedText: "Repeated screenshot attempt — Auto-banned for 24 Hours (Strike 2)",
-          detectedWords: ["SCREENSHOT_AUTO_BAN_24H"],
-          status: "AUTO_BANNED_24H",
-          createdAtMillis: now,
-          createdAt: serverTimestamp()
+          blurredText: "[SCREENSHOT AUTO-BAN 24 HOURS]",
+          detectedWords: "SCREENSHOT_AUTO_BAN_24H",
+          status: "BANNED",
+          adminEmails: activeAdmins,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         });
         const baseSec = String(userProfile?.securityQuestion || "").replace(/\|__BAN_UNTIL__:\d+:[^|]*/g, "");
         await updateDoc(doc(db, "users", uid), {
           accountStatus: "BANNED",
           entitlementStatus: "EXPIRED",
-          securityQuestion: `${baseSec}|__BAN_UNTIL__:${banUntil}:24 Hours (Screenshot Auto-Ban)`,
+          securityQuestion: `${baseSec}|__BAN_UNTIL__:${banUntil}:24 Hours (Screenshot Auto-Ban)`.substring(0, 300),
           updatedAt: serverTimestamp()
         });
-        await updateDoc(doc(db, "device_registry", currentDeviceId), {
+        await updateDoc(doc(db, "device_registry", deviceId), {
           isBanned: true,
           updatedAt: serverTimestamp()
         });
