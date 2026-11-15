@@ -504,7 +504,7 @@ fun PermanentQrAndShareCard(
     onUpdateUrls: (newAppleUrl: String, newAndroidUrl: String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
-    // 0 = Apple iPhone Zero-404 Instant Cloud QR, 1 = GitHub Pages QR, 2 = Android APK QR, 3 = Local Wi-Fi / Chrome / Safari Server QR
+    // 0 = Official Website QR (Chrome, Safari, Windows, Mac, Mobile), 1 = Android App (APK) QR
     var selectedQrTab by remember { mutableIntStateOf(0) }
     var showFullScreenQr by remember { mutableStateOf(false) }
     var showEditUrlDialog by remember { mutableStateOf(false) }
@@ -518,20 +518,17 @@ fun PermanentQrAndShareCard(
         localServerEnabled = true
     }
 
-    val zero404AppleUrl = remember(appleWebAppUrl) {
-        if (appleWebAppUrl.isNotBlank() && !appleWebAppUrl.contains("github.io")) {
-            appleWebAppUrl
-        } else {
-            "https://raw.githack.com/atharvagarg456-droid/Trading-Zone.in/main/docs/index.html"
+    val officialWebsiteUrl = remember(appleWebAppUrl) {
+        appleWebAppUrl.trim().ifBlank {
+            "https://atharvagarg456-droid.github.io/Trading-Zone.in/"
         }
     }
-    val githubPagesUrl = "https://atharvagarg456-droid.github.io/Trading-Zone.in/"
 
-    val activeUrl = if (selectedQrTab == 1) androidApkUrl else zero404AppleUrl
+    val activeUrl = if (selectedQrTab == 1) androidApkUrl else officialWebsiteUrl
     val activeTitle = if (selectedQrTab == 1) {
         "Android App (APK) Download QR"
     } else {
-        "Official Website QR (Google Chrome & Apple Safari)"
+        "Official Website QR (Windows, Mac, Chrome & Safari)"
     }
 
     val qrBitmap = remember(activeUrl) {
